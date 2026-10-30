@@ -1,0 +1,8 @@
+{
+  "appId": "it.collezionejump.app",
+  "appName": "Collezione Jump",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#1b1a1f"
+  }
+}
