@@ -1,0 +1,16 @@
+{
+  "name": "Collezione Jump",
+  "short_name": "Coll. Jump",
+  "description": "V Jump, Shōnen Jump, carte promo e volumi a fumetti",
+  "lang": "it",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1b1a1f",
+  "theme_color": "#1b1a1f",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

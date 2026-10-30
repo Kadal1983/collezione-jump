@@ -1,0 +1,695 @@
+{
+ "vj-2022-10": {
+  "tipo": "rivista",
+  "testata": "V Jump",
+  "editore": "Shueisha",
+  "anno": 2022,
+  "numero": "10",
+  "mese": 10,
+  "titolo": "V Jump – Ottobre 2022 (n. 10/2022, 特大号)",
+  "titoloOriginale": "Vジャンプ 2022年10月特大号",
+  "dataUscita": "2022-08-20",
+  "prezzo": "590 ¥",
+  "copertina": "Dragon Ball Super",
+  "fumetti": [
+   {
+    "titolo": "Dragon Ball Super – finale dell'arco «Granola il sopravvissuto»",
+    "autori": "Akira Toriyama / Toyotaro",
+    "verificato": true
+   },
+   {
+    "titolo": "Dragon Quest: Dai no Daibōken – Yūsha Avan to Gokuen no Maō",
+    "autori": "Riku Sanjō / Yūsaku Shibata",
+    "verificato": false
+   },
+   {
+    "titolo": "Boruto: Naruto Next Generations",
+    "autori": "Masashi Kishimoto / Mikio Ikemoto",
+    "verificato": false
+   },
+   {
+    "titolo": "Yu-Gi-Oh! OCG Structures",
+    "autori": "Masafumi Satō",
+    "verificato": false
+   }
+  ],
+  "allegati": [
+   {
+    "tipo": "carta",
+    "gioco": "Yu-Gi-Oh! OCG",
+    "nome": "Diabolica the Draconique General (魔竜将ディアボリカ)",
+    "codice": "VJMP-JP221",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Dragon Quest Dai – Cross Blade",
+    "nome": "Eroe Avan (勇者アバン) – illustrazione inedita di Y. Shibata",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Battle Spirits",
+    "nome": "Zangai Musha Ryōdan (斬骸武者リョウダン)",
+    "codice": "",
+    "ho": false
+   }
+  ],
+  "stato": "posseduto",
+  "condizione": "",
+  "note": "Descrizione d'acquisto: «V Jump 10 October 2022 - Dragon Ball Cover - Yu-Gi-Oh! Promo». Il venditore citava anche carte di Bleach e Dragon Ball Z: controlla cosa c'è davvero nella tua copia. Fumetti non verificati = serie in corso in quel periodo.",
+  "fonti": [
+   "https://www.neowing.co.jp/product/NEOBK-2661167",
+   "https://yugipedia.com/wiki/V_Jump_October_2022_promotional_card",
+   "https://dragon-ball-official.com/news/01_1331.html"
+  ]
+ },
+ "vj-2023-05": {
+  "tipo": "rivista",
+  "testata": "V Jump",
+  "editore": "Shueisha",
+  "anno": 2023,
+  "numero": "5",
+  "mese": 5,
+  "titolo": "V Jump – Maggio 2023 (n. 5/2023, 特大号)",
+  "titoloOriginale": "Vジャンプ 2023年5月特大号",
+  "dataUscita": "2023-03-20",
+  "prezzo": "",
+  "copertina": "",
+  "fumetti": [
+   {
+    "titolo": "Dragon Ball Super – arco «Super Hero», cap. 4",
+    "autori": "Akira Toriyama / Toyotaro",
+    "verificato": true
+   },
+   {
+    "titolo": "Dragon Quest: Dai no Daibōken – Yūsha Avan to Gokuen no Maō",
+    "autori": "Riku Sanjō / Yūsaku Shibata",
+    "verificato": true
+   }
+  ],
+  "allegati": [
+   {
+    "tipo": "carta",
+    "gioco": "Yu-Gi-Oh! OCG",
+    "nome": "Ultimeat Offering (血肉の代償)",
+    "codice": "VJMP",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Union Arena",
+    "nome": "Kurapika (Hunter×Hunter)",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Union Arena",
+    "nome": "Suzaku Kururugi (Code Geass)",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Super Dragon Ball Heroes",
+    "nome": "Broly",
+    "codice": "",
+    "ho": false
+   }
+  ],
+  "stato": "posseduto",
+  "condizione": "",
+  "note": "Descrizione d'acquisto: «V JUMP 5 May 2023 PROMO Card Yu-Gi-Oh! Union Arena Code Geass».",
+  "fonti": [
+   "https://www.fujisan.co.jp/product/2318/b/2368411/",
+   "https://dragon-ball-official.com/news/01_1759.html",
+   "https://yugipedia.com/wiki/V_Jump_May_2023_promotional_card"
+  ]
+ },
+ "vj-2023-07": {
+  "tipo": "rivista",
+  "testata": "V Jump",
+  "editore": "Shueisha",
+  "anno": 2023,
+  "numero": "7",
+  "mese": 7,
+  "titolo": "V Jump – Luglio 2023 (n. 7/2023) – Numero del 30° anniversario",
+  "titoloOriginale": "Vジャンプ 2023年7月号",
+  "dataUscita": "2023-05-19",
+  "prezzo": "",
+  "copertina": "",
+  "fumetti": [
+   {
+    "titolo": "Dragon Ball Super – arco «Super Hero»",
+    "autori": "Akira Toriyama / Toyotaro",
+    "verificato": false
+   },
+   {
+    "titolo": "Dragon Quest: Dai no Daibōken – Yūsha Avan to Gokuen no Maō",
+    "autori": "Riku Sanjō / Yūsaku Shibata",
+    "verificato": false
+   },
+   {
+    "titolo": "Yu-Gi-Oh! OCG Stories",
+    "autori": "Shin Yoshida / Naoto Miyoshi",
+    "verificato": false
+   },
+   {
+    "titolo": "Yu-Gi-Oh! OCG Structures",
+    "autori": "Masafumi Satō",
+    "verificato": false
+   },
+   {
+    "titolo": "Dragon Quest Treasures – Fadora no Takarajima",
+    "autori": "Masaki Hara / Yōichi Amano",
+    "verificato": false
+   },
+   {
+    "titolo": "Inumayuge de Ikō",
+    "autori": "Yūko Ishizuka",
+    "verificato": false
+   }
+  ],
+  "allegati": [
+   {
+    "tipo": "carta",
+    "gioco": "Yu-Gi-Oh! OCG",
+    "nome": "Dandy White Lion (ダンディ・ホワイトライオン)",
+    "codice": "VJMP",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Super Dragon Ball Heroes",
+    "nome": "Son Goku – set «Super First Heroes» (30th V Ability)",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Super Dragon Ball Heroes",
+    "nome": "Vegeta – set «Super First Heroes» (30th V Ability)",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Super Dragon Ball Heroes",
+    "nome": "Son Gohan (adulto) – set «Super First Heroes» (30th V Ability)",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "One Piece Card Game",
+    "nome": "Trafalgar Law – versione esclusiva V Jump",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Union Arena",
+    "nome": "Ichigo Kurosaki (Bleach)",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Battle Spirits",
+    "nome": "Blue Obelisk (蒼穹ノ銀槍ブルーオベリスク)",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "libretto",
+    "gioco": "Super Dragon Ball Heroes",
+    "nome": "Super First Heroes Book (da verificare)",
+    "codice": "",
+    "ho": false
+   }
+  ],
+  "stato": "posseduto",
+  "condizione": "",
+  "note": "Descrizione d'acquisto: «V Jump Magazine July 2023 Super Dragon Ball Yu-Gi-Oh! One Piece with All Cards». Fumetti non verificati = serie in corso in quel periodo.",
+  "fonti": [
+   "https://www.fujisan.co.jp/product/2318/b/2391968/"
+  ]
+ },
+ "vj-2024-12": {
+  "tipo": "rivista",
+  "testata": "V Jump",
+  "editore": "Shueisha",
+  "anno": 2024,
+  "numero": "12",
+  "mese": 12,
+  "titolo": "V Jump – Dicembre 2024 (n. 12/2024, 特大号) – Dragon Ball 40° anniversario",
+  "titoloOriginale": "Vジャンプ 2024年12月特大号",
+  "dataUscita": "2024-10-21",
+  "prezzo": "",
+  "copertina": "Son Goku (40° anniversario di Dragon Ball)",
+  "fumetti": [
+   {
+    "titolo": "Boruto: Two Blue Vortex",
+    "autori": "Masashi Kishimoto / Mikio Ikemoto",
+    "verificato": false
+   },
+   {
+    "titolo": "Yu-Gi-Oh! OCG Structures",
+    "autori": "Masafumi Satō",
+    "verificato": false
+   },
+   {
+    "titolo": "Yu-Gi-Oh! OCG Stories",
+    "autori": "Shin Yoshida / Naoto Miyoshi",
+    "verificato": false
+   },
+   {
+    "titolo": "Dragon Quest: Dai no Daibōken – Yūsha Avan to Gokuen no Maō",
+    "autori": "Riku Sanjō / Yūsaku Shibata",
+    "verificato": false
+   },
+   {
+    "titolo": "Inumayuge de Ikō",
+    "autori": "Yūko Ishizuka",
+    "verificato": false
+   }
+  ],
+  "allegati": [
+   {
+    "tipo": "carta",
+    "gioco": "Dragon Ball Super Card Game Fusion World",
+    "nome": "Son Goku (Mini): DA – Dragon Ball Daima",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Yu-Gi-Oh! OCG",
+    "nome": "Double Fusion (二重融合)",
+    "codice": "VJMP",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Union Arena",
+    "nome": "Kafka Hibino (Kaiju No. 8) – illustrazione speciale V Jump",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Battle Spirits",
+    "nome": "Hi-Evo Aitvaras (ハイエボ・アイトヴァラス) – da verificare",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "codice",
+    "gioco": "Dragon Ball Sparking! ZERO",
+    "nome": "DLC: Aura a V (esclusiva V Jump) + oggetto abilità «Victory Power»",
+    "codice": "",
+    "ho": false
+   }
+  ],
+  "stato": "posseduto",
+  "condizione": "",
+  "note": "Descrizione d'acquisto: «V Jump 12 December 2024 - Dragon Ball Daima & Yu-Gi-Oh! Promo». Fumetti non verificati = serie in corso in quel periodo.",
+  "fonti": [
+   "https://www.fujisan.co.jp/product/2318/b/2581889/"
+  ]
+ },
+ "vj-2026-01": {
+  "tipo": "rivista",
+  "testata": "V Jump",
+  "editore": "Shueisha",
+  "anno": 2026,
+  "numero": "1",
+  "mese": 1,
+  "titolo": "V Jump – Gennaio 2026 (n. 1/2026, 特大号)",
+  "titoloOriginale": "Vジャンプ 2026年1月特大号",
+  "dataUscita": "2025-11-20",
+  "prezzo": "700 ¥",
+  "copertina": "Dragon Ball Super Divers",
+  "fumetti": [
+   {
+    "titolo": "Boruto: Two Blue Vortex (a colori)",
+    "autori": "Masashi Kishimoto / Mikio Ikemoto",
+    "verificato": true
+   },
+   {
+    "titolo": "Metaphor: ReFantazio (a colori)",
+    "autori": "Atlus / Yōichi Amano",
+    "verificato": true
+   },
+   {
+    "titolo": "Yu-Gi-Oh! OCG Structures",
+    "autori": "Masafumi Satō",
+    "verificato": true
+   },
+   {
+    "titolo": "Yu-Gi-Oh! OCG Stories",
+    "autori": "Shin Yoshida / Naoto Miyoshi",
+    "verificato": true
+   },
+   {
+    "titolo": "Dragon Quest: Dai no Daibōken – Yūsha Avan to Gokuen no Maō",
+    "autori": "Riku Sanjō / Yūsaku Shibata",
+    "verificato": true
+   },
+   {
+    "titolo": "N・E・O Shindō no «Pro»logue!!",
+    "autori": "Yūji Kasai",
+    "verificato": true
+   },
+   {
+    "titolo": "Inumayuge de Ikō",
+    "autori": "Yūko Ishizuka",
+    "verificato": true
+   }
+  ],
+  "allegati": [
+   {
+    "tipo": "carta",
+    "gioco": "Yu-Gi-Oh! OCG",
+    "nome": "三英の相剣師 (Swordsoul – Ultra Rare)",
+    "codice": "VJMP-JP281",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "One Piece Card Game",
+    "nome": "Boa Hancock",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Union Arena",
+    "nome": "Golden Darkness / Yami (To LOVE-Ru)",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Dragon Ball Super Card Game Fusion World",
+    "nome": "Son Goku",
+    "codice": "FP-062",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Haikyu!! Baboca!! BREAK",
+    "nome": "Kozume & Kuroo",
+    "codice": "HV-PR-014",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Dragon Ball Super Divers",
+    "nome": "Vegito",
+    "codice": "SDVPJ",
+    "ho": false
+   },
+   {
+    "tipo": "codice",
+    "gioco": "Dragon Quest X Online",
+    "nome": "70 «Fukubiki Ticket»",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "codice",
+    "gioco": "Dragon Ball Super Divers",
+    "nome": "Codice per richiedere il pack (scaduto il 22/12/2025)",
+    "codice": "",
+    "ho": false
+   }
+  ],
+  "stato": "posseduto",
+  "condizione": "",
+  "note": "Descrizione d'acquisto: «V Jump 1 January 2026 - One Piece & Dragon Ball Promo».",
+  "fonti": [
+   "https://www.fujisan.co.jp/product/2318/b/2731630/",
+   "https://meli-melo.blog.jp/archives/1083095871.html",
+   "https://yu-gi-oh.jp/news/oid-2371/"
+  ]
+ },
+ "vj-2026-03": {
+  "tipo": "rivista",
+  "testata": "V Jump",
+  "editore": "Shueisha",
+  "anno": 2026,
+  "numero": "3",
+  "mese": 3,
+  "titolo": "V Jump – Marzo 2026 (n. 3/2026, 特大号) – Yu-Gi-Oh! 30° / GX 20°",
+  "titoloOriginale": "Vジャンプ 2026年3月特大号",
+  "dataUscita": "2026-01-21",
+  "prezzo": "680 ¥",
+  "copertina": "Yami Yugi e Jaden Yuki / Jūdai (Yu-Gi-Oh! 30° anniversario e GX 20°)",
+  "fumetti": [
+   {
+    "titolo": "Boruto: Two Blue Vortex (a colori)",
+    "autori": "Masashi Kishimoto / Mikio Ikemoto",
+    "verificato": true
+   },
+   {
+    "titolo": "Metaphor: ReFantazio (a colori)",
+    "autori": "Atlus / Yōichi Amano",
+    "verificato": true
+   },
+   {
+    "titolo": "Yu-Gi-Oh! OCG Structures",
+    "autori": "Masafumi Satō",
+    "verificato": true
+   },
+   {
+    "titolo": "Yu-Gi-Oh! OCG Stories",
+    "autori": "Shin Yoshida / Naoto Miyoshi",
+    "verificato": true
+   },
+   {
+    "titolo": "Dragon Quest: Dai no Daibōken – Yūsha Avan to Gokuen no Maō",
+    "autori": "Riku Sanjō / Yūsaku Shibata",
+    "verificato": true
+   },
+   {
+    "titolo": "N・E・O Shindō no «Pro»logue!!",
+    "autori": "Yūji Kasai",
+    "verificato": true
+   },
+   {
+    "titolo": "Inumayuge de Ikō (n. 384)",
+    "autori": "Yūko Ishizuka",
+    "verificato": true
+   }
+  ],
+  "allegati": [
+   {
+    "tipo": "carta",
+    "gioco": "Yu-Gi-Oh! OCG",
+    "nome": "亜空間バトル (Magia – usata da Jūdai nell'ultimo duello di GX)",
+    "codice": "VJMP",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Union Arena",
+    "nome": "Kyōkai (Kingdom)",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Digimon Card Game",
+    "nome": "Aegiochusmon",
+    "codice": "P-213",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Gundam Card Game",
+    "nome": "Risorsa: Setsuna & Gundam Exia (Gundam 00)",
+    "codice": "",
+    "ho": false
+   },
+   {
+    "tipo": "carta",
+    "gioco": "Dragon Ball Super Divers",
+    "nome": "Vegeta",
+    "codice": "SDVPJ-028",
+    "ho": false
+   },
+   {
+    "tipo": "codice",
+    "gioco": "Dragon Quest X Online",
+    "nome": "5 «pietre alchemiche viola» (scadenza 20/04/2026)",
+    "codice": "",
+    "ho": false
+   }
+  ],
+  "stato": "posseduto",
+  "condizione": "",
+  "note": "Descrizione d'acquisto: «V Jump 3 March 2026 - Yu-Gi-Oh! & Dragon Ball Promo».",
+  "fonti": [
+   "https://www.fujisan.co.jp/product/2318/b/2750155/",
+   "https://yu-gi-oh.jp/news_detail.php?page=details&id=2438",
+   "https://digimoncard.com/news/vjump_2603.php"
+  ]
+ },
+ "wsj-2022-34": {
+  "tipo": "rivista",
+  "testata": "Weekly Shonen Jump",
+  "editore": "Shueisha",
+  "anno": 2022,
+  "numero": "34",
+  "mese": 8,
+  "titolo": "Weekly Shōnen Jump n. 34/2022 – Ritorno di One Piece (cap. 1054)",
+  "titoloOriginale": "週刊少年ジャンプ 2022年34号",
+  "dataUscita": "2022-07-25",
+  "prezzo": "290 ¥",
+  "copertina": "Rufy e Tōru Amuro – copertina «unita» con Shōnen Sunday n. 35 (affiancandole si forma un'unica illustrazione)",
+  "fumetti": [
+   {
+    "titolo": "One Piece cap. 1054 – ripresa dopo 4 settimane di pausa, inizio della saga finale",
+    "autori": "Eiichirō Oda",
+    "verificato": true
+   },
+   {
+    "titolo": "Dialogo Gōshō Aoyama × Eiichirō Oda (prima parte; la seconda su Shōnen Sunday 35)",
+    "autori": "",
+    "verificato": true
+   }
+  ],
+  "allegati": [],
+  "stato": "posseduto",
+  "condizione": "",
+  "note": "Data di copertina 8/8. Descrizione d'acquisto: «Weekly Shonen Jump 8/8 34 2022 - One Piece 1054 Issue».",
+  "fonti": [
+   "https://game.watch.impress.co.jp/docs/news/1426871.html",
+   "https://anime.eiga.com/news/116525"
+  ]
+ },
+ "wsj-2025-36-37": {
+  "tipo": "rivista",
+  "testata": "Weekly Shonen Jump",
+  "editore": "Shueisha",
+  "anno": 2025,
+  "numero": "36-37",
+  "mese": 8,
+  "titolo": "Weekly Shōnen Jump n. 36-37/2025 (numero doppio) – Collaborazione Pokémon",
+  "titoloOriginale": "週刊少年ジャンプ 2025年36・37合併特大号",
+  "dataUscita": "2025-08-04",
+  "prezzo": "330 ¥",
+  "copertina": "Copertina apribile con gli autori di Jump che disegnano i loro personaggi con i Pokémon (Rufy & Pikachu, Sakamoto & Chikorita, Chinatsu & Totodile, Chihiro & Tepig, Ichi & Mega Gallade…)",
+  "fumetti": [
+   {
+    "titolo": "Tutte le serie in corso su Jump ad agosto 2025 (One Piece, Sakamoto Days, Kagurabachi, Blue Box…)",
+    "autori": "",
+    "verificato": false
+   }
+  ],
+  "allegati": [
+   {
+    "tipo": "adesivi",
+    "gioco": "Pokémon × Jump",
+    "nome": "Foglio di adesivi della collaborazione (rilegato nella rivista)",
+    "codice": "",
+    "ho": false
+   }
+  ],
+  "stato": "posseduto",
+  "condizione": "",
+  "note": "Il n. 38/2025 ha un secondo foglio di adesivi della stessa collaborazione: utile se vuoi completare la serie.",
+  "fonti": [
+   "https://natalie.mu/comic/news/634762",
+   "https://www.oricon.co.jp/news/2399240/full/"
+  ]
+ },
+ "dc-killing-joke": {
+  "tipo": "volume",
+  "testata": "Batman",
+  "editore": "Panini Comics",
+  "collana": "DC",
+  "anno": null,
+  "numero": "",
+  "titolo": "Batman: The Killing Joke",
+  "titoloOriginale": "",
+  "autori": "Alan Moore / Brian Bolland",
+  "copertina": "",
+  "fumetti": [],
+  "allegati": [],
+  "stato": "posseduto",
+  "note": "Volume unico",
+  "fonti": []
+ },
+ "dc-ultima-crociata": {
+  "tipo": "volume",
+  "testata": "Batman",
+  "editore": "Panini Comics",
+  "collana": "DC Library",
+  "anno": null,
+  "numero": "",
+  "titolo": "Batman: Il Ritorno del Cavaliere Oscuro – L'Ultima Crociata",
+  "titoloOriginale": "",
+  "autori": "Frank Miller, Brian Azzarello / John Romita Jr.",
+  "copertina": "",
+  "fumetti": [],
+  "allegati": [],
+  "stato": "posseduto",
+  "note": "DC Black Label",
+  "fonti": []
+ },
+ "dc-ritorno-cavaliere": {
+  "tipo": "volume",
+  "testata": "Batman",
+  "editore": "Panini Comics",
+  "collana": "DC",
+  "anno": null,
+  "numero": "",
+  "titolo": "Batman: Il Ritorno del Cavaliere Oscuro",
+  "titoloOriginale": "",
+  "autori": "Frank Miller / Klaus Janson",
+  "copertina": "",
+  "fumetti": [],
+  "allegati": [],
+  "stato": "posseduto",
+  "note": "Volume unico",
+  "fonti": []
+ },
+ "dc-anno-uno": {
+  "tipo": "volume",
+  "testata": "Batman",
+  "editore": "Panini Comics",
+  "collana": "DC",
+  "anno": null,
+  "numero": "",
+  "titolo": "Batman: Anno Uno",
+  "titoloOriginale": "",
+  "autori": "Frank Miller / David Mazzucchelli",
+  "copertina": "",
+  "fumetti": [],
+  "allegati": [],
+  "stato": "posseduto",
+  "note": "Volume unico",
+  "fonti": []
+ },
+ "dc-lungo-halloween": {
+  "tipo": "volume",
+  "testata": "Batman",
+  "editore": "Panini Comics",
+  "collana": "DC",
+  "anno": null,
+  "numero": "",
+  "titolo": "Batman: Il Lungo Halloween",
+  "titoloOriginale": "",
+  "autori": "Jeph Loeb / Tim Sale",
+  "copertina": "",
+  "fumetti": [],
+  "allegati": [],
+  "stato": "posseduto",
+  "note": "Volume unico",
+  "fonti": []
+ }
+}
