@@ -1,0 +1,81 @@
+name: Compila app (Android + PC)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: App Android (.apk)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Installa Capacitor
+        run: npm install --no-audit --no-fund
+
+      - name: Genera il progetto Android
+        run: |
+          npx cap add android
+          bash scripts/prepare-android.sh
+          npx cap sync android
+
+      - name: Usa sempre la stessa firma (così gli aggiornamenti si installano sopra)
+        run: |
+          mkdir -p ~/.android
+          cp keystore/debug.keystore ~/.android/debug.keystore
+
+      - name: Compila l'APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../CollezioneJump.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CollezioneJump-apk
+          path: CollezioneJump.apk
+
+      - name: Pubblica nella pagina Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Collezione Jump 1.0.${{ github.run_number }}
+          body: Scarica CollezioneJump.apk dal telefono e aprilo per installare o aggiornare l'app.
+          files: CollezioneJump.apk
+          make_latest: true
+
+  pc:
+    name: Versione per PC (sito installabile)
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: www
+      - id: deploy
+        uses: actions/deploy-pages@v4
