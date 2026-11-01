@@ -480,7 +480,8 @@ function renderDetail(){
 
 /* ---------------- intelligenza artificiale (Gemini, piano gratuito) ---------------- */
 // La chiave Gemini è salvata nel tuo database (meta/ai), protetta dalle regole: la imposti una volta e vale su tutti i dispositivi.
-const AI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+// Modelli: li chiedo a Google (cambiano spesso); se non riesco uso questo elenco di riserva.
+const AI_FALLBACK_MODELS = ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite"];
 let aiKey = LS.get("cj_aikey", null);
 async function loadAiKey(){
   try { const d = await api("/meta/ai"); aiKey = (d && d.fields && d.fields.key && d.fields.key.stringValue) || null; }
@@ -491,37 +492,82 @@ async function saveAiKey(k){
   if (k) await api("/meta/ai", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fields: { key: { stringValue: k } } }) });
   else await api("/meta/ai", { method: "DELETE" });
   aiKey = k || null; if (aiKey) LS.set("cj_aikey", aiKey); else LS.del("cj_aikey");
+  LS.del("cj_aimodels"); LS.del("cj_aiok"); LS.del("cj_skipsearch");
 }
 class AiError extends Error {}
-async function gemini(parts, { search = true, key = aiKey } = {}){
-  if (!key) throw new AiError("nokey");
-  if (!navigator.onLine) throw new AiError("Serve la connessione a internet.");
-  let last = null;
-  for (const model of AI_MODELS){
-    let res;
-    try {
-      res = await fetch(`${EP.ai}/models/${model}:generateContent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({ contents: [{ role: "user", parts }], tools: search ? [{ google_search: {} }] : undefined, generationConfig: { temperature: 0.2 } })
-      });
-    } catch { throw new AiError("Nessuna connessione con Gemini."); }
+async function aiModels(key){
+  const cache = LS.get("cj_aimodels", null);
+  if (cache && cache.k === key.slice(-6) && Date.now() - cache.at < 86400000 && cache.list.length) return cache.list;
+  let list = [];
+  try {
+    const res = await fetch(`${EP.ai}/models?pageSize=1000`, { headers: { "x-goog-api-key": key } });
     if (res.ok){
       const j = await res.json();
-      const cand = (j.candidates || [])[0] || {};
-      const text = ((cand.content && cand.content.parts) || []).map(p => p.text || "").join("");
-      const fonti = (((cand.groundingMetadata || {}).groundingChunks) || []).map(c => c.web).filter(Boolean)
-        .map(w => (w.title ? w.title.replace(/\|/g, "/") + " | " : "") + w.uri);
-      return { text, fonti, model };
+      const ok = (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes("generateContent")).map(m => m.name.replace(/^models\//, ""));
+      const score = n => {
+        const m = n.match(/^gemini-(\d+(?:\.\d+)?)-(flash(?:-lite)?)$/); if (!m) return -1;
+        return parseFloat(m[1]) * 10 + (m[2] === "flash" ? 1 : 0);      // più recente prima; a parità, flash prima di flash-lite
+      };
+      list = ok.filter(n => score(n) >= 0).sort((a, b) => score(b) - score(a));
+      const best = list.filter(n => /-flash$/.test(n)).slice(0, 2).concat(list.filter(n => /-flash-lite$/.test(n)).slice(0, 2)).sort((a, b) => score(b) - score(a));
+      list = [...new Set(best.concat(ok.filter(n => /^gemini-flash(-lite)?-latest$/.test(n))))];
     }
-    let msg = ""; try { const e = await res.json(); msg = (e.error && (e.error.message || e.error.status)) || ""; } catch {}
-    if (res.status === 400 && /API key|API_KEY/i.test(msg)) throw new AiError("La chiave Gemini non è valida: controllala in Impostazioni.");
-    if (res.status === 403) throw new AiError("La chiave Gemini non è autorizzata (" + msg + ").");
-    last = { status: res.status, msg };
-    if (![404, 429, 500, 503].includes(res.status)) break;   // per questi errori provo il modello successivo
+  } catch {}
+  if (!list.length) list = AI_FALLBACK_MODELS;
+  LS.set("cj_aimodels", { k: key.slice(-6), at: Date.now(), list });
+  return list;
+}
+/* Prova, nell'ordine: ricerca Google → lettura di pagine scelte → solo conoscenze del modello.
+   build(mode) restituisce le "parts" della richiesta per quel modo. */
+async function gemini(build, { modes = ["search", "url", "none"], key = aiKey } = {}){
+  if (!key) throw new AiError("nokey");
+  if (!navigator.onLine) throw new AiError("Serve la connessione a internet.");
+  let models = (await aiModels(key)).slice(0, 4);
+  const okModel = LS.get("cj_aiok", null);                  // il modello che ha funzionato l'ultima volta va per primo
+  if (okModel && models.includes(okModel)) models = [okModel].concat(models.filter(m => m !== okModel));
+  const skip = LS.get("cj_skipsearch", 0);                   // se la ricerca Google non è concessa alla chiave, non la riprovo per un giorno
+  if (Date.now() - skip < 86400000) modes = modes.filter(m => m !== "search" || modes.length === 1);
+  let last = null, quota = false, tries = 0;
+  for (const mode of modes){
+    for (const model of models){
+      const parts = build(mode); if (!parts) break;         // es. nessuna pagina da leggere: passo al modo successivo
+      if (++tries > 9) break;
+      const tools = mode === "search" ? [{ google_search: {} }] : mode === "url" ? [{ url_context: {} }] : undefined;
+      let res;
+      try {
+        res = await fetch(`${EP.ai}/models/${model}:generateContent`, {
+          method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify({ contents: [{ role: "user", parts }], tools, generationConfig: { temperature: 0.2 } })
+        });
+      } catch { throw new AiError("Nessuna connessione con Gemini."); }
+      if (res.ok){
+        const j = await res.json();
+        const cand = (j.candidates || [])[0] || {};
+        const text = ((cand.content && cand.content.parts) || []).map(p => p.text || "").join("");
+        if (!text.trim()){ last = { status: 200, msg: "risposta vuota" }; continue; }
+        const web = (((cand.groundingMetadata || {}).groundingChunks) || []).map(c => c.web).filter(Boolean)
+          .map(w => (w.title ? w.title.replace(/\|/g, "/") + " | " : "") + w.uri);
+        const um = cand.urlContextMetadata || cand.url_context_metadata || {};
+        const urls = (um.urlMetadata || um.url_metadata || [])
+          .filter(u => /SUCCESS/.test(u.urlRetrievalStatus || u.url_retrieval_status || "")).map(u => u.retrievedUrl || u.retrieved_url);
+        LS.set("cj_aiok", model);
+        return { text, fonti: web.concat(urls), model, mode };
+      }
+      let msg = ""; try { const e = await res.json(); msg = (e.error && (e.error.message || e.error.status)) || ""; } catch {}
+      if (res.status === 400 && /API key|API_KEY/i.test(msg)) throw new AiError("La chiave Gemini non è valida: controllala in Impostazioni.");
+      if (res.status === 404){                                // modello ritirato: lo tolgo dall'elenco
+        const c = LS.get("cj_aimodels", null); if (c){ c.list = c.list.filter(m => m !== model); LS.set("cj_aimodels", c); }
+        models = models.filter(m => m !== model); if (okModel === model) LS.del("cj_aiok");
+        continue;
+      }
+      last = { status: res.status, msg };
+      if (mode === "search"){ LS.set("cj_skipsearch", Date.now()); break; }   // ricerca non concessa: provo subito il modo successivo
+      if (mode === "url" && res.status === 400) break;        // lettura pagine non supportata: modo successivo
+      if (res.status === 429) quota = true;
+    }
   }
-  if (last && last.status === 429) throw new AiError("Hai esaurito le richieste gratuite di Gemini per oggi: riprova domani (si azzerano alle 9 del mattino, ora italiana).");
-  throw new AiError("Gemini non ha risposto (" + (last ? last.status + " " + last.msg : "errore") + "). Riprova tra poco.");
+  if (quota) throw new AiError("Hai esaurito le richieste gratuite di Gemini per oggi: riprova domani (si azzerano verso le 9 del mattino, ora italiana).");
+  throw new AiError("Gemini non ha risposto (" + (last ? last.status + " " + String(last.msg).slice(0, 160) : "nessun modello disponibile per questa chiave") + "). Riprova tra poco.");
 }
 const AI_SCHEMA = `{
   "riconosciuto": true,
@@ -543,13 +589,36 @@ const AI_SCHEMA = `{
   "allegati": [{ "tipo": "carta | codice | libretto | adesivi | altro", "gioco": "es. Yu-Gi-Oh! OCG", "nome": "nome della carta o dell'allegato", "codice": "es. VJMP-JP281" }],
   "note": "dubbi, cose da verificare, differenze tra le fonti"
 }`;
-function aiPrompt(mode, query){
+const MESI_IT = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
+function guessYM(text){
+  const t = String(text || "").toLowerCase();
+  let y = (t.match(/(19|20)\d{2}/) || [])[0]; y = y ? parseInt(y) : null;
+  let m = null;
+  const jm = t.match(/年\s*(\d{1,2})\s*月/); if (jm) m = parseInt(jm[1]);
+  if (!m) MESI_IT.forEach((n, i) => { if (t.includes(n) || t.includes(n.slice(0, 3) + " ")) m = m || i + 1; });
+  if (!m) MONTHS_EN.forEach((n, i) => { if (t.includes(n.toLowerCase())) m = m || i + 1; });
+  return { y, m };
+}
+function pagesFor(info){
+  const t = (info.text || "").toLowerCase(); const u = [];
+  if (/v ?jump|vジャンプ/.test(t)){
+    u.push("https://www.fujisan.co.jp/product/2318/b/list/", "https://www.fujisan.co.jp/product/2318/b/list/?page=2&limit=45");
+    if (info.y && info.m) u.push("https://yugipedia.com/wiki/V_Jump_" + MONTHS_EN[info.m - 1] + "_" + info.y + "_promotional_card");
+  } else if (/jump|ジャンプ/.test(t)){
+    u.push("https://www.jajanken.net/en/issues");
+  }
+  return u;
+}
+function aiPrompt(kind, query, mode, info = {}){
   const esempi = [...items.values()].filter(i => i.titolo).slice(0, 3).map(i => "- " + i.titolo).join("\n");
+  const how = mode === "search" ? "usa la ricerca Google per trovare"
+    : mode === "url" ? "leggi queste pagine (se una non si apre, ignorala) per trovare:\n" + pagesFor(info).join("\n") + "\nCerca nelle pagine il numero giusto e ricava"
+    : "NON hai accesso a internet: usa solo quello che sai per indicare";
+  const task = kind === "foto-id"
+    ? "Nell'immagine c'è la copertina di un fumetto o di una rivista fotografata dal collezionista. Leggi con attenzione testata, numero, mese/anno o numero di volume stampati in copertina e riconosci la pubblicazione esatta. Elenca anche le carte promo e gli allegati annunciati in copertina (付録)."
+    : `Il collezionista cerca: "${query}". Identifica esattamente quella pubblicazione e ${how} i dati del numero: data di uscita, prezzo, chi c'è in copertina, fumetti pubblicati, carte promo e allegati (付録), codici digitali.`;
   return `Sei un esperto di fumetti, manga e riviste giapponesi (V Jump, Weekly Shōnen Jump, Saikyō Jump...) e delle edizioni italiane (Panini, Star Comics, J-Pop, Planet Manga).
-${mode === "foto"
-  ? "Nell'immagine c'è la copertina di un fumetto o di una rivista fotografata dal collezionista. Riconosci di quale pubblicazione si tratta esattamente (testata, numero, mese/anno o numero di volume), poi"
-  : `Il collezionista ha scritto: "${query}". Identifica esattamente quella pubblicazione e`} usa la ricerca Google per trovare i dati del numero: data di uscita, prezzo, chi c'è in copertina, fumetti pubblicati, carte promo e allegati (付録), codici digitali.
-Fonti utili: fujisan.co.jp, vjump.shueisha.co.jp, yugipedia.com, furoku.net, cdjapan.co.jp, neowing.co.jp, jajanken.net, animeclick.it, panini.it, starcomics.com.
+${task}
 
 Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, con questa struttura:
 ${AI_SCHEMA}
@@ -559,8 +628,8 @@ Regole:
 - Per le riviste giapponesi "anno" e "mese" sono quelli del NUMERO (Vジャンプ 2026年3月号 → anno 2026, mese 3), non della data di uscita, che è circa due mesi prima.
 - Titolo nel formato della collezione, per esempio:
 ${esempi || "- V Jump – Marzo 2026 (n. 3/2026, 特大号)\n- Weekly Shōnen Jump n. 34/2022 – Ritorno di One Piece (cap. 1054)\n- Batman: Anno Uno"}
-- "verificato": false per i fumetti che non trovi confermati da una fonte su quel numero preciso.
-- Non inventare: se un dato non lo trovi, lascia il campo vuoto e scrivilo in "note".
+- "verificato": false per i fumetti che non trovi confermati su quel numero preciso.
+- Non inventare: se un dato non lo sai con sicurezza (soprattutto i nomi delle carte), lascia il campo vuoto e scrivilo in "note".${mode === "none" ? "\n- Senza internet i dettagli del numero sono incerti: usa \"confidenza\": \"bassa\" o \"media\"." : ""}
 - Se non riesci a capire di che pubblicazione si tratta: "riconosciuto": false e in "note" descrivi cosa vedi o cosa manca.`;
 }
 function parseAiJson(text){
@@ -569,28 +638,49 @@ function parseAiJson(text){
   if (a < 0 || z < a) throw new AiError("Gemini ha risposto in un formato inatteso. Riprova.");
   try { return JSON.parse(t.slice(a, z + 1)); } catch { throw new AiError("Gemini ha risposto in un formato inatteso. Riprova."); }
 }
-function normalizeAi(r, fonti){
+const MODE_LABEL = { search: "ricerca Google", url: "pagine di Fujisan/Yugipedia", none: "solo conoscenze di Gemini, senza internet", foto: "lettura della copertina" };
+function normalizeAi(r, fonti, mode){
   const s = v => (v === null || v === undefined) ? "" : String(v).trim();
   const n = v => { const x = parseInt(v); return isNaN(x) ? null : x; };
   const tipi = Object.keys(TIPI_ALL);
+  let conf = s(r.confidenza).toLowerCase();
+  if (mode === "none" && conf === "alta") conf = "media";
   return {
-    riconosciuto: r.riconosciuto !== false, confidenza: s(r.confidenza).toLowerCase(),
+    riconosciuto: r.riconosciuto !== false, confidenza: conf, mode,
     tipo: r.tipo === "volume" ? "volume" : "rivista",
     testata: s(r.testata), editore: s(r.editore), collana: s(r.collana),
     anno: n(r.anno), mese: (n(r.mese) >= 1 && n(r.mese) <= 12) ? n(r.mese) : null, numero: s(r.numero),
     titolo: s(r.titolo), titoloOriginale: s(r.titoloOriginale),
     dataUscita: /^\d{4}-\d{2}-\d{2}$/.test(s(r.dataUscita)) ? s(r.dataUscita) : "",
     prezzo: s(r.prezzo), copertina: s(r.copertina), autori: s(r.autori), note: s(r.note),
-    fumetti: (Array.isArray(r.fumetti) ? r.fumetti : []).map(f => ({ titolo: s(f && f.titolo), autori: s(f && f.autori), verificato: !!(f && f.verificato) })).filter(f => f.titolo),
+    fumetti: (Array.isArray(r.fumetti) ? r.fumetti : []).map(f => ({ titolo: s(f && f.titolo), autori: s(f && f.autori), verificato: mode === "none" ? false : !!(f && f.verificato) })).filter(f => f.titolo),
     allegati: (Array.isArray(r.allegati) ? r.allegati : []).map(a => ({ tipo: tipi.includes(a && a.tipo) ? a.tipo : "altro", gioco: s(a && a.gioco), nome: s(a && a.nome), codice: s(a && a.codice), ho: false })).filter(a => a.nome || a.gioco),
     fonti: [...new Set(fonti || [])].slice(0, 8)
   };
 }
-async function aiLookup({ query, imageDataUrl }){
-  const parts = [{ text: aiPrompt(imageDataUrl ? "foto" : "testo", query) }];
-  if (imageDataUrl) parts.push({ inlineData: { mimeType: "image/jpeg", data: imageDataUrl.split(",")[1] } });
-  const { text, fonti } = await gemini(parts);
-  return normalizeAi(parseAiJson(text), fonti);
+async function aiLookup({ query, imageDataUrl, hint = {} }){
+  if (imageDataUrl){
+    // 1) leggo la copertina (non serve internet)
+    const id = await gemini(() => [{ text: aiPrompt("foto-id", "", "none") }, { inlineData: { mimeType: "image/jpeg", data: imageDataUrl.split(",")[1] } }], { modes: ["none"] });
+    const a = normalizeAi(parseAiJson(id.text), [], "foto");
+    if (!a.riconosciuto || !a.titolo) return a;
+    // 2) cerco i dettagli di quel numero; se non riesco tengo quello che c'è in copertina
+    try {
+      const q = [a.titoloOriginale, a.titolo].filter(Boolean).join(" / ");
+      const b = await aiLookup({ query: q, hint: { y: a.anno, m: a.mese } });
+      if (!b.riconosciuto) return a;
+      const merged = Object.assign({}, b);
+      for (const k of ["tipo","testata","editore","anno","mese","numero","titolo","titoloOriginale","copertina"]) if (a[k]) merged[k] = a[k];
+      const names = new Set(b.allegati.map(x => x.nome.toLowerCase()));
+      merged.allegati = b.allegati.concat(a.allegati.filter(x => !names.has(x.nome.toLowerCase())));
+      merged.note = [a.note, b.note].filter(Boolean).join("\n");
+      merged.confidenza = b.mode === "none" ? "bassa" : b.confidenza;
+      return merged;
+    } catch { return a; }
+  }
+  const g = guessYM(query); const info = { text: query, y: hint.y || g.y, m: hint.m || g.m };
+  const res = await gemini(mode => mode === "url" && !pagesFor(info).length ? null : [{ text: aiPrompt("testo", query, mode, info) }]);
+  return normalizeAi(parseAiJson(res.text), res.fonti, res.mode);
 }
 /* doppioni: stessa testata e stesso numero/anno, oppure stesso titolo originale */
 function findDuplicate(r){
@@ -656,7 +746,7 @@ function openSettings(msg = ""){
     const k = $("#ai-key").value.trim(); if (k.length < 20){ $("#ai-msg").textContent = "Incolla la chiave completa (di solito inizia con AIza)."; return; }
     const b = $("#ai-save"); b.disabled = true; $("#ai-msg").textContent = "Provo la chiave…";
     try {
-      await gemini([{ text: "Rispondi solo: OK" }], { search: false, key: k });
+      await gemini(() => [{ text: "Rispondi solo: OK" }], { modes: ["none"], key: k });
       await saveAiKey(k); toast("Chiave Gemini salvata e funzionante."); openSettings();
     } catch (err) { $("#ai-msg").textContent = err instanceof AiError ? err.message : "Non riesco a salvare la chiave (" + (err.message || "errore") + ")."; }
     finally { b.disabled = false; }
@@ -718,7 +808,7 @@ function aiPreset(r){
 }
 function aiNote(r){
   const d = new Date().toLocaleDateString("it-IT");
-  return `Compilato con Gemini il ${d} (affidabilità: ${r.confidenza || "non indicata"}): da verificare.` + (r.note ? "\n" + r.note : "");
+  return `Compilato con Gemini il ${d} (${MODE_LABEL[r.mode] || "Gemini"}; affidabilità: ${r.confidenza || "non indicata"}): da verificare.` + (r.note ? "\n" + r.note : "");
 }
 
 /* ---------------- modulo ---------------- */
@@ -734,7 +824,7 @@ function openForm(id, preset = {}, opts = {}){
   const giochi = [...new Set([...items.values()].flatMap(i => (i.allegati || []).map(a => a.gioco)).filter(Boolean))];
   const testate = [...new Set(["V Jump", "Weekly Shonen Jump", ...[...items.values()].map(i => i.testata)].filter(Boolean))];
   const body = $("#sheet-body"); body.dataset.for = "";
-  const aiBox = opts.ai ? `<div class="aibox ${opts.ai.confidenza === "alta" ? "" : "warn"}"><b>Compilato da Gemini</b> · affidabilità ${esc(opts.ai.confidenza || "non indicata")}. Controlla i dati prima di salvare: i campi incerti sono indicati nelle note.</div>` : "";
+  const aiBox = opts.ai ? `<div class="aibox ${opts.ai.confidenza === "alta" ? "" : "warn"}"><b>Compilato da Gemini</b> · fonte: ${esc(MODE_LABEL[opts.ai.mode] || "lettura della copertina")} · affidabilità ${esc(opts.ai.confidenza || "non indicata")}. Controlla i dati prima di salvare: i campi incerti sono indicati nelle note.</div>` : "";
   body.innerHTML = `<form id="frm" novalidate>
     <div id="f-aibox">${aiBox}</div>
     ${pendingPhoto ? `<div class="photo-row"><img src="${pendingPhoto}" alt=""><span class="hint-p">La tua foto diventerà la copertina di questo pezzo.</span></div>` : ""}
@@ -784,11 +874,11 @@ function openForm(id, preset = {}, opts = {}){
     if (!aiKey){ openSettings("Per usare Compila serve la chiave gratuita di Gemini."); return; }
     const b = $("#f-ai"); b.disabled = true; b.textContent = "Cerco… (10–30 s)";
     try {
-      const r = await aiLookup({ query: [q, $("#f-testata").value, $("#f-anno").value && ("anno " + $("#f-anno").value), $("#f-mese").value && ("mese " + $("#f-mese").value)].filter(Boolean).join(", ") });
+      const r = await aiLookup({ query: [q, $("#f-testata").value, $("#f-anno").value && ("anno " + $("#f-anno").value), $("#f-mese").value && ("mese " + $("#f-mese").value)].filter(Boolean).join(", "), hint: { y: parseInt($("#f-anno").value) || null, m: parseInt($("#f-mese").value) || null } });
       if (!$("#f-ai")) return;
       if (!r.riconosciuto){ $("#f-aibox").innerHTML = `<div class="aibox warn"><b>Gemini non ha trovato questo numero.</b> ${esc(r.note)} Prova a scrivere il titolo in modo più preciso o usa i pulsanti «Cerca su».</div>`; return; }
       const n = fillForm(r);
-      $("#f-aibox").innerHTML = `<div class="aibox ${r.confidenza === "alta" ? "" : "warn"}"><b>Compilati ${n} campi</b> · affidabilità ${esc(r.confidenza || "non indicata")}. Ho riempito solo i campi vuoti: controlla prima di salvare.</div>`;
+      $("#f-aibox").innerHTML = `<div class="aibox ${r.confidenza === "alta" ? "" : "warn"}"><b>Compilati ${n} campi</b> · fonte: ${esc(MODE_LABEL[r.mode] || "Gemini")} · affidabilità ${esc(r.confidenza || "non indicata")}. Ho riempito solo i campi vuoti: controlla prima di salvare.</div>`;
       drawLinks(); $("#sheet-body").scrollTop = 0;
     } catch (err) { if (err instanceof AiError) $("#f-aibox").innerHTML = `<div class="aibox warn">${esc(err.message)}</div>`; else toast("Compilazione non riuscita."); }
     finally { const bb = $("#f-ai"); if (bb){ bb.disabled = false; bb.textContent = "✨ Compila con Gemini"; } }
