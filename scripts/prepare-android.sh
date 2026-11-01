@@ -22,5 +22,5 @@ if ! grep -q "android.permission.CAMERA" "$MAN"; then
 fi
 # numero di versione = numero della compilazione su GitHub (serve per aggiornare l'app sopra la vecchia)
 BUILD=${GITHUB_RUN_NUMBER:-1}
-sed -i -E "s/versionCode [0-9]+/versionCode ${BUILD}/; s/versionName \"[^\"]+\"/versionName \"1.0.${BUILD}\"/" android/app/build.gradle
-echo "Progetto Android pronto (versione 1.0.${BUILD})"
+sed -i -E "s/versionCode [0-9]+/versionCode ${BUILD}/; s/versionName \"[^\"]+\"/versionName \"1.1.${BUILD}\"/" android/app/build.gradle
+echo "Progetto Android pronto (versione 1.1.${BUILD})"

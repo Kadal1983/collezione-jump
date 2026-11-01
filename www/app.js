@@ -1,4 +1,4 @@
-/* Collezione Jump – app per PC (PWA) e Android (Capacitor).
+/* Collezione Fumetti – app per PC (PWA) e Android (Capacitor).
    Dati su Firebase: Authentication (email/password) + Firestore (raccolte "items" e "copertine").
    Copia locale (localStorage + IndexedDB) per l'uso offline. Nessuna libreria esterna: solo chiamate REST. */
 (() => {
@@ -30,7 +30,8 @@ let CFG = getCfg();
 const EP = Object.assign({
   auth: "https://identitytoolkit.googleapis.com/v1",
   token: "https://securetoken.googleapis.com/v1",
-  store: "https://firestore.googleapis.com/v1"
+  store: "https://firestore.googleapis.com/v1",
+  ai: "https://generativelanguage.googleapis.com/v1beta"
 }, window.CJ_ENDPOINTS || {});
 const docsBase = () => `${EP.store}/projects/${encodeURIComponent(CFG.projectId)}/databases/(default)/documents`;
 
@@ -467,7 +468,7 @@ function renderDetail(){
   if (fu.length) h += `<section class="blk"><h3>Fumetti pubblicati <small>${fu.length}</small></h3><ul class="list">` +
     fu.map(f => `<li><div class="main"><b>${esc(f.titolo)}</b><small>${esc(f.autori)}</small></div>${f.verificato === false ? '<span class="unv">da verificare</span>' : ""}</li>`).join("") + "</ul></section>";
   if (it.note) h += `<section class="blk"><h3>Note</h3><div class="note">${esc(it.note)}</div></section>`;
-  if ((it.fonti || []).length) h += `<section class="blk"><h3>Fonti</h3><div class="src">${it.fonti.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\//, ""))}</a>`).join("")}</div></section>`;
+  if ((it.fonti || []).length) h += `<section class="blk"><h3>Fonti</h3><div class="src">${it.fonti.map(f => { const i = f.lastIndexOf(" | "); const u = i >= 0 ? f.slice(i + 3) : f; const label = i >= 0 ? f.slice(0, i) : u.replace(/^https?:\/\//, ""); return /^https?:\/\//.test(u) ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(label)}</a>` : `<span>${esc(f)}</span>`; }).join("")}</div></section>`;
   const body = $("#sheet-body"); const keep = body.dataset.for === openId ? body.scrollTop : 0;
   body.innerHTML = h; body.dataset.for = openId; body.scrollTop = keep;
   $("#up").onclick = () => { $("#file").dataset.target = it.id; $("#file").click(); };
@@ -477,18 +478,266 @@ function renderDetail(){
   });
 }
 
+/* ---------------- intelligenza artificiale (Gemini, piano gratuito) ---------------- */
+// La chiave Gemini è salvata nel tuo database (meta/ai), protetta dalle regole: la imposti una volta e vale su tutti i dispositivi.
+const AI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+let aiKey = LS.get("cj_aikey", null);
+async function loadAiKey(){
+  try { const d = await api("/meta/ai"); aiKey = (d && d.fields && d.fields.key && d.fields.key.stringValue) || null; }
+  catch (e) { if (e instanceof HttpError && e.status === 404) aiKey = null; else return; }
+  if (aiKey) LS.set("cj_aikey", aiKey); else LS.del("cj_aikey");
+}
+async function saveAiKey(k){
+  if (k) await api("/meta/ai", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fields: { key: { stringValue: k } } }) });
+  else await api("/meta/ai", { method: "DELETE" });
+  aiKey = k || null; if (aiKey) LS.set("cj_aikey", aiKey); else LS.del("cj_aikey");
+}
+class AiError extends Error {}
+async function gemini(parts, { search = true, key = aiKey } = {}){
+  if (!key) throw new AiError("nokey");
+  if (!navigator.onLine) throw new AiError("Serve la connessione a internet.");
+  let last = null;
+  for (const model of AI_MODELS){
+    let res;
+    try {
+      res = await fetch(`${EP.ai}/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+        body: JSON.stringify({ contents: [{ role: "user", parts }], tools: search ? [{ google_search: {} }] : undefined, generationConfig: { temperature: 0.2 } })
+      });
+    } catch { throw new AiError("Nessuna connessione con Gemini."); }
+    if (res.ok){
+      const j = await res.json();
+      const cand = (j.candidates || [])[0] || {};
+      const text = ((cand.content && cand.content.parts) || []).map(p => p.text || "").join("");
+      const fonti = (((cand.groundingMetadata || {}).groundingChunks) || []).map(c => c.web).filter(Boolean)
+        .map(w => (w.title ? w.title.replace(/\|/g, "/") + " | " : "") + w.uri);
+      return { text, fonti, model };
+    }
+    let msg = ""; try { const e = await res.json(); msg = (e.error && (e.error.message || e.error.status)) || ""; } catch {}
+    if (res.status === 400 && /API key|API_KEY/i.test(msg)) throw new AiError("La chiave Gemini non è valida: controllala in Impostazioni.");
+    if (res.status === 403) throw new AiError("La chiave Gemini non è autorizzata (" + msg + ").");
+    last = { status: res.status, msg };
+    if (![404, 429, 500, 503].includes(res.status)) break;   // per questi errori provo il modello successivo
+  }
+  if (last && last.status === 429) throw new AiError("Hai esaurito le richieste gratuite di Gemini per oggi: riprova domani (si azzerano alle 9 del mattino, ora italiana).");
+  throw new AiError("Gemini non ha risposto (" + (last ? last.status + " " + last.msg : "errore") + "). Riprova tra poco.");
+}
+const AI_SCHEMA = `{
+  "riconosciuto": true,
+  "confidenza": "alta | media | bassa",
+  "tipo": "rivista | volume",
+  "testata": "es. V Jump, Weekly Shonen Jump, One Piece, Batman",
+  "editore": "es. Shueisha, Panini Comics, Star Comics",
+  "collana": "es. DC Black Label, Planet Manga (vuoto per le riviste)",
+  "anno": 2026,
+  "mese": 3,
+  "numero": "3",
+  "titolo": "titolo completo in italiano nel formato degli esempi",
+  "titoloOriginale": "titolo in lingua originale, es. Vジャンプ 2026年3月特大号",
+  "dataUscita": "AAAA-MM-GG",
+  "prezzo": "es. 680 ¥ oppure 5,90 €",
+  "copertina": "chi o cosa c'è in copertina",
+  "autori": "autori (soprattutto per i volumi)",
+  "fumetti": [{ "titolo": "serie e capitolo/arco", "autori": "soggetto / disegni", "verificato": true }],
+  "allegati": [{ "tipo": "carta | codice | libretto | adesivi | altro", "gioco": "es. Yu-Gi-Oh! OCG", "nome": "nome della carta o dell'allegato", "codice": "es. VJMP-JP281" }],
+  "note": "dubbi, cose da verificare, differenze tra le fonti"
+}`;
+function aiPrompt(mode, query){
+  const esempi = [...items.values()].filter(i => i.titolo).slice(0, 3).map(i => "- " + i.titolo).join("\n");
+  return `Sei un esperto di fumetti, manga e riviste giapponesi (V Jump, Weekly Shōnen Jump, Saikyō Jump...) e delle edizioni italiane (Panini, Star Comics, J-Pop, Planet Manga).
+${mode === "foto"
+  ? "Nell'immagine c'è la copertina di un fumetto o di una rivista fotografata dal collezionista. Riconosci di quale pubblicazione si tratta esattamente (testata, numero, mese/anno o numero di volume), poi"
+  : `Il collezionista ha scritto: "${query}". Identifica esattamente quella pubblicazione e`} usa la ricerca Google per trovare i dati del numero: data di uscita, prezzo, chi c'è in copertina, fumetti pubblicati, carte promo e allegati (付録), codici digitali.
+Fonti utili: fujisan.co.jp, vjump.shueisha.co.jp, yugipedia.com, furoku.net, cdjapan.co.jp, neowing.co.jp, jajanken.net, animeclick.it, panini.it, starcomics.com.
+
+Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, con questa struttura:
+${AI_SCHEMA}
+
+Regole:
+- Scrivi in italiano (tranne titoloOriginale e i nomi originali delle carte, che puoi mettere tra parentesi).
+- Per le riviste giapponesi "anno" e "mese" sono quelli del NUMERO (Vジャンプ 2026年3月号 → anno 2026, mese 3), non della data di uscita, che è circa due mesi prima.
+- Titolo nel formato della collezione, per esempio:
+${esempi || "- V Jump – Marzo 2026 (n. 3/2026, 特大号)\n- Weekly Shōnen Jump n. 34/2022 – Ritorno di One Piece (cap. 1054)\n- Batman: Anno Uno"}
+- "verificato": false per i fumetti che non trovi confermati da una fonte su quel numero preciso.
+- Non inventare: se un dato non lo trovi, lascia il campo vuoto e scrivilo in "note".
+- Se non riesci a capire di che pubblicazione si tratta: "riconosciuto": false e in "note" descrivi cosa vedi o cosa manca.`;
+}
+function parseAiJson(text){
+  const t = String(text || "").replace(/```(?:json)?/gi, "");
+  const a = t.indexOf("{"), z = t.lastIndexOf("}");
+  if (a < 0 || z < a) throw new AiError("Gemini ha risposto in un formato inatteso. Riprova.");
+  try { return JSON.parse(t.slice(a, z + 1)); } catch { throw new AiError("Gemini ha risposto in un formato inatteso. Riprova."); }
+}
+function normalizeAi(r, fonti){
+  const s = v => (v === null || v === undefined) ? "" : String(v).trim();
+  const n = v => { const x = parseInt(v); return isNaN(x) ? null : x; };
+  const tipi = Object.keys(TIPI_ALL);
+  return {
+    riconosciuto: r.riconosciuto !== false, confidenza: s(r.confidenza).toLowerCase(),
+    tipo: r.tipo === "volume" ? "volume" : "rivista",
+    testata: s(r.testata), editore: s(r.editore), collana: s(r.collana),
+    anno: n(r.anno), mese: (n(r.mese) >= 1 && n(r.mese) <= 12) ? n(r.mese) : null, numero: s(r.numero),
+    titolo: s(r.titolo), titoloOriginale: s(r.titoloOriginale),
+    dataUscita: /^\d{4}-\d{2}-\d{2}$/.test(s(r.dataUscita)) ? s(r.dataUscita) : "",
+    prezzo: s(r.prezzo), copertina: s(r.copertina), autori: s(r.autori), note: s(r.note),
+    fumetti: (Array.isArray(r.fumetti) ? r.fumetti : []).map(f => ({ titolo: s(f && f.titolo), autori: s(f && f.autori), verificato: !!(f && f.verificato) })).filter(f => f.titolo),
+    allegati: (Array.isArray(r.allegati) ? r.allegati : []).map(a => ({ tipo: tipi.includes(a && a.tipo) ? a.tipo : "altro", gioco: s(a && a.gioco), nome: s(a && a.nome), codice: s(a && a.codice), ho: false })).filter(a => a.nome || a.gioco),
+    fonti: [...new Set(fonti || [])].slice(0, 8)
+  };
+}
+async function aiLookup({ query, imageDataUrl }){
+  const parts = [{ text: aiPrompt(imageDataUrl ? "foto" : "testo", query) }];
+  if (imageDataUrl) parts.push({ inlineData: { mimeType: "image/jpeg", data: imageDataUrl.split(",")[1] } });
+  const { text, fonti } = await gemini(parts);
+  return normalizeAi(parseAiJson(text), fonti);
+}
+/* doppioni: stessa testata e stesso numero/anno, oppure stesso titolo originale */
+function findDuplicate(r){
+  const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9぀-ヿ一-鿿]/g, "");
+  for (const it of items.values()){
+    if (r.titoloOriginale && it.titoloOriginale && norm(r.titoloOriginale) === norm(it.titoloOriginale)) return it;
+    if (r.testata && norm(r.testata) === norm(it.testata)){
+      if (r.tipo === "rivista" && r.anno && r.anno === it.anno && ((r.mese && r.mese === it.mese) || (r.numero && norm(r.numero) === norm(it.numero)))) return it;
+      if (r.tipo === "volume" && r.numero && norm(r.numero) === norm(it.numero)) return it;
+    }
+    if (r.tipo === "volume" && r.titolo && norm(r.titolo) === norm(it.titolo)) return it;
+  }
+  return null;
+}
+
+/* ---------------- "Cerca su…": siti per il copia-incolla ---------------- */
+const MONTHS_EN = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+function searchLinks(f){
+  const q = (f.titoloOriginale || f.titolo || f.testata || "").trim();
+  const g = (site, text) => "https://www.google.com/search?q=" + encodeURIComponent((site ? "site:" + site + " " : "") + text);
+  const t = (f.testata || f.titolo || "").toLowerCase();
+  const L = [["Google", g("", q || "fumetto")]];
+  if (/v ?jump|vジャンプ/.test(t + q.toLowerCase())){
+    L.push(["Fujisan", g("fujisan.co.jp", q || "Vジャンプ")], ["furoku.net", g("furoku.net", q || "Vジャンプ")]);
+    L.push(["Yugipedia", f.anno && f.mese ? "https://yugipedia.com/wiki/V_Jump_" + MONTHS_EN[f.mese - 1] + "_" + f.anno + "_promotional_card" : g("yugipedia.com", "V Jump promotional card " + (f.anno || ""))]);
+    L.push(["CDJapan", g("cdjapan.co.jp", q || "V JUMP")], ["V Jump ufficiale", "https://vjump.shueisha.co.jp/"]);
+  } else if (/jump|ジャンプ/.test(t + q.toLowerCase())){
+    L.push(["Jajanken", "https://www.jajanken.net/en/issues"], ["Fujisan", g("fujisan.co.jp", q)], ["CDJapan", g("cdjapan.co.jp", q)]);
+  } else if (f.tipo === "volume"){
+    L.push(["AnimeClick", g("animeclick.it", q)], ["Panini", g("panini.it", q)], ["Star Comics", g("starcomics.com", q)], ["Amazon", "https://www.amazon.it/s?k=" + encodeURIComponent(q)]);
+  } else {
+    L.push(["Fujisan", g("fujisan.co.jp", q)], ["AnimeClick", g("animeclick.it", q)], ["CDJapan", g("cdjapan.co.jp", q)]);
+  }
+  return L;
+}
+
+/* ---------------- impostazioni (chiave Gemini) ---------------- */
+function openSettings(msg = ""){
+  openId = null; editing = true;
+  $("#scrim").classList.add("open"); $("#sheet").classList.add("open");
+  $("#sheet-title").textContent = "Impostazioni"; $("#edit").hidden = true;
+  const masked = aiKey ? "••••••••" + aiKey.slice(-4) : "";
+  const body = $("#sheet-body"); body.dataset.for = "";
+  body.innerHTML = `<section class="blk"><h3>Autocompilazione con Gemini</h3>
+    ${msg ? `<div class="aibox warn">${esc(msg)}</div>` : ""}
+    <p class="hint-p">Serve per <b>Compila</b> (dal titolo) e <b>Da foto</b> (dalla copertina). La chiave è gratuita e la imposti una volta sola: vale su telefono e PC.</p>
+    <ol class="hint-p">
+      <li>Apri <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> con il tuo account Google.</li>
+      <li>Premi <b>Crea chiave API</b> (se te lo chiede, scegli il progetto <b>collezione-jump</b>) e copiala.</li>
+      <li>Incollala qui sotto e premi <b>Salva e prova</b>.</li>
+    </ol>
+    <p class="hint-p">Stato: <b>${aiKey ? "chiave impostata (" + esc(masked) + ")" : "nessuna chiave"}</b></p>
+    <form id="ai-frm" class="ai-row" novalidate>
+      <label class="f" style="flex:1">Chiave Gemini<input id="ai-key" type="password" autocomplete="off" placeholder="AIza…"></label>
+      <button class="btn primary" type="submit" id="ai-save">Salva e prova</button>
+    </form>
+    <div id="ai-msg" class="hint-p"></div>
+    ${aiKey ? '<button class="btn ghost small" type="button" id="ai-del">Rimuovi la chiave</button>' : ""}
+    <p class="hint-p" style="margin-top:12px">Il piano gratuito ha un numero limitato di richieste al giorno: per qualche fumetto al giorno basta. Google può usare le richieste gratuite per migliorare i suoi servizi (qui sono solo titoli e copertine).</p>
+  </section>`;
+  $("#ai-frm").onsubmit = async e => {
+    e.preventDefault();
+    const k = $("#ai-key").value.trim(); if (k.length < 20){ $("#ai-msg").textContent = "Incolla la chiave completa (di solito inizia con AIza)."; return; }
+    const b = $("#ai-save"); b.disabled = true; $("#ai-msg").textContent = "Provo la chiave…";
+    try {
+      await gemini([{ text: "Rispondi solo: OK" }], { search: false, key: k });
+      await saveAiKey(k); toast("Chiave Gemini salvata e funzionante."); openSettings();
+    } catch (err) { $("#ai-msg").textContent = err instanceof AiError ? err.message : "Non riesco a salvare la chiave (" + (err.message || "errore") + ")."; }
+    finally { b.disabled = false; }
+  };
+  const del = $("#ai-del"); if (del) del.onclick = async () => { try { await saveAiKey(null); toast("Chiave rimossa."); openSettings(); } catch { toast("Non riesco a rimuovere la chiave adesso."); } };
+}
+
+/* ---------------- ricerca da foto ---------------- */
+async function photoToDataUrl(file, max = 1024, q = 0.82){
+  const img = await createImageBitmap(file);
+  const s = Math.min(1, max / Math.max(img.width, img.height));
+  const cv = document.createElement("canvas"); cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
+  cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+  return cv.toDataURL("image/jpeg", q);
+}
+async function photoSearch(file){
+  if (!aiKey){ openSettings("Per riconoscere le copertine serve la chiave gratuita di Gemini."); return; }
+  let photo; try { photo = await photoToDataUrl(file); } catch { toast("Non riesco a leggere questa foto."); return; }
+  openId = null; editing = true;
+  $("#scrim").classList.add("open"); $("#sheet").classList.add("open");
+  $("#sheet-title").textContent = "Riconoscimento copertina"; $("#edit").hidden = true;
+  const body = $("#sheet-body"); body.dataset.for = "";
+  body.innerHTML = `<div class="hero"><div><div class="cover"><img src="${photo}" alt="La tua foto"></div></div>
+    <div><h2>Sto riconoscendo la copertina…</h2><p class="hint-p">Gemini guarda la foto e cerca i dati del numero su Google. Di solito bastano 10–30 secondi.</p><div class="spinner" aria-hidden="true"></div></div></div>`;
+  try {
+    const r = await aiLookup({ imageDataUrl: photo });
+    if (!$("#sheet").classList.contains("open")) return;            // chiuso nel frattempo
+    if (!r.riconosciuto || !r.titolo){
+      body.innerHTML = `<div class="hero"><div><div class="cover"><img src="${photo}" alt="La tua foto"></div></div>
+        <div><h2>Non l'ho riconosciuto</h2><p class="hint-p">${esc(r.note || "La foto non basta per capire di che numero si tratta.")}</p>
+        <div class="cover-actions"><button class="btn primary" type="button" id="ph-manual">Inserisci a mano</button><button class="btn ghost" type="button" id="ph-retry">Riprova con un'altra foto</button></div></div></div>`;
+      $("#ph-manual").onclick = () => openForm(null, {}, { photo });
+      $("#ph-retry").onclick = () => $("#file-photo").click();
+      return;
+    }
+    const dup = findDuplicate(r);
+    if (dup){
+      body.innerHTML = `<div class="hero"><div><div class="cover"><img src="${photo}" alt="La tua foto"></div></div>
+        <div><h2>Ce l'hai già!</h2><p class="hint-p">Ho riconosciuto <b>${esc(r.titolo)}</b> ed è già nella tua collezione come:</p>
+        <p><b>${esc(dup.titolo)}</b> <span class="pill ${esc(dup.stato || "posseduto")}">${STATI[dup.stato] || "Posseduto"}</span></p>
+        <div class="cover-actions"><button class="btn primary" type="button" id="ph-open">Apri la scheda</button><button class="btn ghost" type="button" id="ph-add">È un'altra copia: aggiungi</button></div></div></div>`;
+      $("#ph-open").onclick = () => { editing = false; openSheet(dup.id); };
+      $("#ph-add").onclick = () => openForm(null, aiPreset(r), { photo, ai: r });
+      return;
+    }
+    openForm(null, aiPreset(r), { photo, ai: r });
+  } catch (err) {
+    body.innerHTML = `<div class="hero"><div><div class="cover"><img src="${photo}" alt="La tua foto"></div></div>
+      <div><h2>Riconoscimento non riuscito</h2><p class="hint-p">${esc(err instanceof AiError ? err.message : "Errore imprevisto: riprova.")}</p>
+      <div class="cover-actions"><button class="btn primary" type="button" id="ph-manual">Inserisci a mano</button></div></div></div>`;
+    $("#ph-manual").onclick = () => openForm(null, {}, { photo });
+  }
+}
+function aiPreset(r){
+  const p = {}; for (const k of ["tipo","testata","editore","collana","anno","mese","numero","titolo","titoloOriginale","dataUscita","prezzo","copertina","autori","fumetti","allegati","fonti"]) p[k] = r[k];
+  p.stato = "posseduto";
+  p.note = aiNote(r);
+  return p;
+}
+function aiNote(r){
+  const d = new Date().toLocaleDateString("it-IT");
+  return `Compilato con Gemini il ${d} (affidabilità: ${r.confidenza || "non indicata"}): da verificare.` + (r.note ? "\n" + r.note : "");
+}
+
 /* ---------------- modulo ---------------- */
 function subFumetto(f = {}){ return `<div class="subrow fu"><label class="f">Titolo<input data-k="titolo" value="${esc(f.titolo)}"></label><label class="f">Autori<input data-k="autori" value="${esc(f.autori)}"></label><button type="button" class="x" aria-label="Rimuovi">✕</button><input type="hidden" data-k="verificato" value="${f.verificato === false ? "0" : "1"}"></div>`; }
 function subAllegato(a = {}){ return `<div class="subrow al"><label class="f">Tipo<select data-k="tipo">${Object.entries(TIPI_ALL).map(([k, v]) => `<option value="${k}" ${a.tipo === k ? "selected" : ""}>${v}</option>`).join("")}</select></label><label class="f">Gioco<input data-k="gioco" value="${esc(a.gioco)}" list="giochi"></label><label class="f">Nome<input data-k="nome" value="${esc(a.nome)}"></label><label class="f">Codice<input data-k="codice" value="${esc(a.codice)}"></label><button type="button" class="x" aria-label="Rimuovi">✕</button><input type="hidden" data-k="ho" value="${a.ho ? "1" : "0"}"></div>`; }
-function openForm(id, preset = {}){
-  const it = id ? items.get(id) : Object.assign({ tipo:"rivista", testata:"V Jump", editore:"Shueisha", stato:"posseduto", fumetti:[], allegati:[] }, preset);
+let pendingPhoto = null;   // foto scattata con "Da foto", diventa la copertina al salvataggio
+function openForm(id, preset = {}, opts = {}){
+  const it = id ? items.get(id) : Object.assign({ tipo:"rivista", testata:"", editore:"", stato:"posseduto", fumetti:[], allegati:[] }, preset);
+  pendingPhoto = id ? null : (opts.photo || null);
   openId = id || null; editing = true;
   $("#scrim").classList.add("open"); $("#sheet").classList.add("open");
   $("#sheet-title").textContent = id ? "Modifica" : "Nuovo pezzo"; $("#edit").hidden = true;
   const giochi = [...new Set([...items.values()].flatMap(i => (i.allegati || []).map(a => a.gioco)).filter(Boolean))];
   const testate = [...new Set(["V Jump", "Weekly Shonen Jump", ...[...items.values()].map(i => i.testata)].filter(Boolean))];
   const body = $("#sheet-body"); body.dataset.for = "";
+  const aiBox = opts.ai ? `<div class="aibox ${opts.ai.confidenza === "alta" ? "" : "warn"}"><b>Compilato da Gemini</b> · affidabilità ${esc(opts.ai.confidenza || "non indicata")}. Controlla i dati prima di salvare: i campi incerti sono indicati nelle note.</div>` : "";
   body.innerHTML = `<form id="frm" novalidate>
+    <div id="f-aibox">${aiBox}</div>
+    ${pendingPhoto ? `<div class="photo-row"><img src="${pendingPhoto}" alt=""><span class="hint-p">La tua foto diventerà la copertina di questo pezzo.</span></div>` : ""}
     <datalist id="giochi">${giochi.map(g => `<option value="${esc(g)}">`).join("")}</datalist>
     <datalist id="testate">${testate.map(g => `<option value="${esc(g)}">`).join("")}</datalist>
     <div class="row">
@@ -496,6 +745,11 @@ function openForm(id, preset = {}){
       <label class="f">Stato<select name="stato" id="f-stato">${Object.entries(STATI).map(([k, v]) => `<option value="${k}" ${it.stato === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
     </div>
     <label class="f">Titolo completo<input name="titolo" id="f-titolo" required value="${esc(it.titolo)}" placeholder="es. V Jump – Aprile 2026 (n. 4/2026)"></label>
+    <div class="ai-row">
+      <button type="button" class="btn primary small" id="f-ai">✨ Compila con Gemini</button>
+      <span class="hint-p">Scrivi il titolo (anche breve, es. «V Jump aprile 2025») e premi Compila: riempie i campi vuoti.</span>
+    </div>
+    <div class="searchlinks" id="f-links"></div>
     <label class="f">Titolo originale<input name="titoloOriginale" id="f-jp" value="${esc(it.titoloOriginale)}" placeholder="es. Vジャンプ 2026年4月号"></label>
     <div class="row">
       <label class="f">Testata / serie<input name="testata" id="f-testata" list="testate" value="${esc(it.testata)}"></label>
@@ -521,6 +775,24 @@ function openForm(id, preset = {}){
     <div class="formbar">${id ? '<button type="button" class="btn ghost" id="del">Elimina</button>' : ""}<span style="flex:1"></span><button type="button" class="btn ghost" id="cancel">Annulla</button><button type="submit" class="btn primary">Salva</button></div>
   </form>`;
   body.scrollTop = 0;
+  const formVals = () => ({ titolo: $("#f-titolo").value, titoloOriginale: $("#f-jp").value, testata: $("#f-testata").value, tipo: $("#f-tipo").value, anno: parseInt($("#f-anno").value) || null, mese: parseInt($("#f-mese").value) || null });
+  const drawLinks = () => { $("#f-links").innerHTML = '<span class="hint-p">Cerca su:</span> ' + searchLinks(formVals()).map(([n, u]) => `<a class="chip" href="${esc(u)}" target="_blank" rel="noopener">${esc(n)}</a>`).join(""); };
+  drawLinks(); ["#f-titolo","#f-jp","#f-testata","#f-tipo","#f-anno","#f-mese"].forEach(s => $(s).addEventListener("input", drawLinks));
+  $("#f-ai").onclick = async () => {
+    const q = ($("#f-titolo").value || $("#f-jp").value).trim();
+    if (!q){ toast("Scrivi prima il titolo (anche breve)."); $("#f-titolo").focus(); return; }
+    if (!aiKey){ openSettings("Per usare Compila serve la chiave gratuita di Gemini."); return; }
+    const b = $("#f-ai"); b.disabled = true; b.textContent = "Cerco… (10–30 s)";
+    try {
+      const r = await aiLookup({ query: [q, $("#f-testata").value, $("#f-anno").value && ("anno " + $("#f-anno").value), $("#f-mese").value && ("mese " + $("#f-mese").value)].filter(Boolean).join(", ") });
+      if (!$("#f-ai")) return;
+      if (!r.riconosciuto){ $("#f-aibox").innerHTML = `<div class="aibox warn"><b>Gemini non ha trovato questo numero.</b> ${esc(r.note)} Prova a scrivere il titolo in modo più preciso o usa i pulsanti «Cerca su».</div>`; return; }
+      const n = fillForm(r);
+      $("#f-aibox").innerHTML = `<div class="aibox ${r.confidenza === "alta" ? "" : "warn"}"><b>Compilati ${n} campi</b> · affidabilità ${esc(r.confidenza || "non indicata")}. Ho riempito solo i campi vuoti: controlla prima di salvare.</div>`;
+      drawLinks(); $("#sheet-body").scrollTop = 0;
+    } catch (err) { if (err instanceof AiError) $("#f-aibox").innerHTML = `<div class="aibox warn">${esc(err.message)}</div>`; else toast("Compilazione non riuscita."); }
+    finally { const bb = $("#f-ai"); if (bb){ bb.disabled = false; bb.textContent = "✨ Compila con Gemini"; } }
+  };
   $("#add-al").onclick = () => $("#f-al").insertAdjacentHTML("beforeend", subAllegato({ tipo:"carta" }));
   $("#add-fu").onclick = () => $("#f-fu").insertAdjacentHTML("beforeend", subFumetto());
   body.onclick = e => { if (e.target.classList.contains("x")) e.target.closest(".subrow").remove(); };
@@ -537,6 +809,10 @@ function openForm(id, preset = {}){
     d.allegati = [...document.querySelectorAll("#f-al .subrow")].map(r => ({ tipo: r.querySelector('[data-k="tipo"]').value, gioco: r.querySelector('[data-k="gioco"]').value.trim(), nome: r.querySelector('[data-k="nome"]').value.trim(), codice: r.querySelector('[data-k="codice"]').value.trim(), ho: r.querySelector('[data-k="ho"]').value === "1" })).filter(a => a.nome || a.gioco);
     const prev = id ? items.get(id) : null; if (prev && prev.coverV) d.coverV = prev.coverV;
     const newId = id || ("it-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+    if (!id && pendingPhoto){
+      const v = Date.now(); const c = { v, img: pendingPhoto }; covers.set(newId, c); IDB.put(newId, c);
+      d.coverV = v; queue({ op: "cover", id: newId, v }); pendingPhoto = null;
+    }
     editing = false; openId = newId; saveItem(newId, d); toast("Salvato.");
   };
 }
@@ -547,6 +823,23 @@ function confirmDelete(id){
   $("#yes").onclick = () => {
     closeSheet(); deleteItem(id); toast("Eliminato.");
   };
+}
+
+function fillForm(r){
+  let n = 0;
+  const set = (sel, v) => { const el = $(sel); if (el && v !== null && v !== undefined && v !== "" && !el.value.trim()){ el.value = v; n++; } };
+  if (r.tipo && !$("#f-testata").value.trim()) $("#f-tipo").value = r.tipo;
+  set("#f-jp", r.titoloOriginale); set("#f-testata", r.testata); set("#f-editore", r.editore); set("#f-collana", r.collana);
+  set("#f-anno", r.anno); set("#f-mese", r.mese); set("#f-numero", r.numero); set("#f-uscita", r.dataUscita);
+  set("#f-autori", r.autori); set("#f-prezzo", r.prezzo); set("#f-cop", r.copertina);
+  // il titolo scritto a mano lo sostituisco con quello completo solo se era breve
+  const t = $("#f-titolo"); if (r.titolo && t.value.trim().length < r.titolo.length && !t.value.includes("–")){ t.value = r.titolo; n++; }
+  if (!document.querySelector("#f-al .subrow") && r.allegati.length){ $("#f-al").insertAdjacentHTML("beforeend", r.allegati.map(subAllegato).join("")); n++; }
+  if (!document.querySelector("#f-fu .subrow") && r.fumetti.length){ $("#f-fu").insertAdjacentHTML("beforeend", r.fumetti.map(subFumetto).join("")); n++; }
+  const note = $("#f-note"); note.value = note.value.trim() ? note.value.trim() + "\n" + aiNote(r) : aiNote(r);
+  const fo = $("#f-fonti"); const have = new Set(fo.value.split(/\n+/).map(x => x.trim()).filter(Boolean));
+  r.fonti.forEach(x => have.add(x)); fo.value = [...have].join("\n");
+  return n;
 }
 
 /* ---------------- backup ---------------- */
@@ -565,11 +858,11 @@ async function saveFile(name, data, mime){
 function exportData(fmt){
   const list = [...items.values()].sort(cmp);
   const stamp = new Date().toISOString().slice(0, 10);
-  if (fmt === "json") return saveFile(`collezione-jump-${stamp}.json`, JSON.stringify(list, null, 2), "application/json");
+  if (fmt === "json") return saveFile(`collezione-fumetti-${stamp}.json`, JSON.stringify(list, null, 2), "application/json");
   const cols = ["tipo","stato","testata","editore","collana","anno","mese","numero","titolo","titoloOriginale","dataUscita","copertina","autori","fumetti","allegati","note"];
   const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
   const rows = list.map(i => cols.map(c => c === "fumetti" ? q((i.fumetti || []).map(f => f.titolo).join(" | ")) : c === "allegati" ? q((i.allegati || []).map(a => (a.ho ? "[x] " : "[ ] ") + a.gioco + ": " + a.nome).join(" | ")) : q(i[c])).join(";"));
-  return saveFile(`collezione-jump-${stamp}.csv`, "﻿" + cols.join(";") + "\n" + rows.join("\n"), "text/csv");
+  return saveFile(`collezione-fumetti-${stamp}.csv`, "﻿" + cols.join(";") + "\n" + rows.join("\n"), "text/csv");
 }
 $("#file-json").addEventListener("change", async e => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
@@ -577,7 +870,7 @@ $("#file-json").addEventListener("change", async e => {
     const list = JSON.parse(await f.text()); if (!Array.isArray(list)) throw 0;
     let n = 0; for (const it of list){ if (it && it.id && it.titolo){ const d = Object.assign({}, it); delete d.id; outbox = outbox.filter(o => o.id !== it.id); const op = { op:"upsert", id: it.id, data: d }; outbox.push(op); applyOp(op); n++; } }
     persist(); render(); flush(); toast(n + " pezzi ripristinati dal backup.");
-  } catch { toast("Il file non è un backup valido di Collezione Jump."); }
+  } catch { toast("Il file non è un backup valido di Collezione Fumetti."); }
 });
 
 /* ---------------- eventi ---------------- */
@@ -586,17 +879,20 @@ document.querySelectorAll(".views button").forEach(b => b.onclick = () => { view
 $("#content").addEventListener("click", e => {
   const b = e.target.closest("[data-id]"); if (b){ openSheet(b.dataset.id); return; }
   const n = e.target.closest("[data-new]"); if (n){ const [y, m] = n.dataset.new.split("-").map(Number);
-    openForm(null, { anno: y, mese: m, numero: String(m), stato: "desiderato", titolo: `V Jump – ${MESI_LUNGHI[m - 1]} ${y} (n. ${m}/${y})`, titoloOriginale: `Vジャンプ ${y}年${m}月号` }); }
+    openForm(null, { testata: "V Jump", editore: "Shueisha", anno: y, mese: m, numero: String(m), stato: "desiderato", titolo: `V Jump – ${MESI_LUNGHI[m - 1]} ${y} (n. ${m}/${y})`, titoloOriginale: `Vジャンプ ${y}年${m}月号` }); }
 });
 $("#file").addEventListener("change", e => { const f = e.target.files[0]; const id = e.target.dataset.target; e.target.value = ""; if (f && id) uploadCover(id, f); });
 $("#add").onclick = () => openForm(null);
+$("#photo").onclick = () => { if (!aiKey){ openSettings("Per riconoscere le copertine serve la chiave gratuita di Gemini."); return; } $("#file-photo").click(); };
+$("#file-photo").addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) photoSearch(f); });
+$("#settings").onclick = () => openSettings();
 $("#edit").onclick = () => openForm(openId);
 $("#close").onclick = closeSheet; $("#scrim").onclick = closeSheet;
 $("#refresh").onclick = () => pull();
 $("#exp-json").onclick = () => exportData("json");
 $("#exp-csv").onclick = () => exportData("csv");
 $("#imp-json").onclick = () => $("#file-json").click();
-$("#logout").onclick = () => { session = null; LS.del("cj_session"); LS.del("cj_items"); LS.del("cj_cursor"); cursor = null; items = new Map(); covers.clear(); IDB.clear(); showLogin(); };
+$("#logout").onclick = () => { LS.del("cj_aikey"); aiKey = null; session = null; LS.del("cj_session"); LS.del("cj_items"); LS.del("cj_cursor"); cursor = null; items = new Map(); covers.clear(); IDB.clear(); showLogin(); };
 document.addEventListener("keydown", e => { if (e.key === "Escape" && sheetOpen()) closeSheet(); });
 window.addEventListener("online", () => pull());
 window.addEventListener("offline", () => setSync("off"));
@@ -618,7 +914,7 @@ if (!NATIVE && "serviceWorker" in navigator && location.protocol === "https:"){
 function start(){
   if (!CFG) return showSetup();
   if (!session) return showLogin();
-  showApp(); setSync(navigator.onLine ? "busy" : "off"); pull();
+  showApp(); setSync(navigator.onLine ? "busy" : "off"); pull().then(loadAiKey);
 }
 start();
 })();

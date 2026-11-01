@@ -1,8 +1,8 @@
-# Collezione Jump: app per Android e PC (versione Firebase)
+# Collezione Fumetti: app per Android e PC
 
-È l'app della tua collezione di V Jump, Shōnen Jump, carte promo e volumi a fumetti.
+È l'app della tua collezione di fumetti: riviste giapponesi (V Jump, Shōnen Jump…), volumi, carte promo e allegati. Puoi **compilare le schede in automatico** dal titolo o **fotografando la copertina**.
 
-- **Sul telefono Android** è un'app vera (`CollezioneJump.apk`) che installi tu.
+- **Sul telefono Android** è un'app vera (`CollezioneFumetti.apk`) che installi tu.
 - **Sul PC** è un sito che installi da Chrome o Edge e che si apre in una finestra sua, come un programma.
 - **I dati sono gli stessi ovunque.** Stanno su **Firebase di Google** (piano gratuito *Spark*, senza carta di credito), protetti dal tuo login. Ogni dispositivo tiene anche una copia, quindi puoi consultare la collezione, spuntare carte e caricare copertine **senza connessione**. Tutto parte da solo quando torni online.
 - **Niente da rinnovare**: niente scadenze mensili, niente pause per inattività.
@@ -73,9 +73,9 @@ Apri la scheda **Actions**. **Compila app (Android + PC)** ci mette circa 5–8 
 
 ### Telefono Android
 1. Dal telefono apri `https://github.com/TUO-NOME-UTENTE/collezione-jump/releases/latest`.
-2. Tocca **CollezioneJump.apk** per scaricarlo, poi aprilo.
+2. Tocca **CollezioneFumetti.apk** per scaricarlo, poi aprilo.
 3. Consenti a Chrome di installare app sconosciute. Se compare Play Protect, tocca **Altri dettagli → Installa comunque**. È normale per le app che non vengono dal Play Store.
-4. Apri **Collezione Jump** ed entra con email e password.
+4. Apri **Collezione Fumetti** ed entra con email e password.
 
 **Al primo accesso l'app carica da sola i 13 pezzi del tuo Excel**, con tutti i dati già ricercati. Lo fa una volta sola.
 
@@ -86,8 +86,37 @@ Apri la scheda **Actions**. **Compila app (Android + PC)** ci mette circa 5–8 
 
 ---
 
+---
+
+## Parte D: autocompilazione con Gemini (gratuita, facoltativa)
+
+Con la chiave gratuita di Gemini (l'intelligenza artificiale di Google) l'app può:
+- **✨ Compila con Gemini**: nel modulo scrivi il titolo, anche breve (es. «V Jump aprile 2025»), e premi il pulsante. Gemini cerca su Google e riempie **i campi vuoti**: titolo completo e giapponese, uscita, prezzo, copertina, fumetti, carte promo, fonti.
+- **📷 Da foto**: fotografi la copertina e l'app ti dice di che fumetto si tratta. Se **ce l'hai già** ti apre la sua scheda; se è nuovo ti propone il modulo già compilato e usa la tua foto come copertina.
+
+### Passo 10: crea la chiave (una volta sola, 2 minuti)
+1. Vai su <https://aistudio.google.com/apikey> con lo stesso account Google di Firebase e accetta i termini.
+2. Premi **Crea chiave API** (*Create API key*). Se ti chiede un progetto, scegli **collezione-jump**.
+3. Copia la chiave (inizia con `AIza…`).
+4. Nell'app premi **Impostazioni** (in basso), incolla la chiave e premi **Salva e prova**.
+
+La chiave viene salvata nel tuo database protetto: **vale su telefono e PC**, non devi inserirla due volte. Non metterla in `config.js`, perché quel file è pubblico.
+
+### Da sapere
+- È gratuita: senza carta di credito collegata Google non può addebitarti nulla. Il numero di richieste al giorno è limitato; quando finisce, l'app te lo dice e si riparte il giorno dopo (verso le 9 del mattino).
+- **Controlla sempre** prima di salvare: l'app scrive nelle note «Compilato con Gemini… da verificare» e l'affidabilità (alta, media, bassa). Per numeri molto di nicchia può sbagliare o lasciare campi vuoti.
+- Sul piano gratuito Google può usare le richieste per migliorare i suoi servizi: qui sono solo titoli e foto di copertine.
+- Senza chiave l'app funziona lo stesso: restano i pulsanti **Cerca su…** (Google, Fujisan, furoku.net, Yugipedia, CDJapan, Jajanken, AnimeClick, Panini…), che aprono la ricerca già impostata per fare copia-incolla.
+
+## Come aggiornare dalla versione «Collezione Jump»
+1. Su GitHub, nella pagina del repository: **Add file → Upload files**. Trascina le cartelle `www`, `resources`, `scripts` e i file `capacitor.config.json`, `package.json`, `LEGGIMI.md`, `LEGGIMI.txt`. Premi **Commit changes**: i file vecchi vengono sostituiti. (`www/config.js` contiene già i tuoi codici.)
+2. Apri `.github/workflows/build.yml`, premi la **matita**, seleziona tutto il testo (Ctrl+A), incolla il nuovo contenuto del file `build.yml` e premi **Commit changes**.
+3. Aspetta il pallino verde in **Actions**.
+4. Telefono: scarica il nuovo **CollezioneFumetti.apk** da *releases/latest* e installalo **sopra** la vecchia app: i dati restano. PC: chiudi e riapri l'app (se serve due volte) e vedrai il nuovo nome.
+
 ## Uso quotidiano
 
+- **Nuovo pezzo**: **📷 Da foto** per riconoscerlo dalla copertina, oppure **+ Aggiungi** e poi **✨ Compila con Gemini**.
 - **Copertine**: apri un pezzo e premi **Carica foto**. Dal telefono puoi fotografare la tua copia. L'immagine viene ridotta a circa 100–200 KB e salvata nel database. Una volta scaricata resta sul dispositivo, quindi non consuma letture ogni volta.
 - **Carte promo**: spunta quelle che hai davvero nella tua copia.
 - **Annate V Jump**: è una griglia di 12 mesi per anno. Tocca una casella vuota per aggiungere quel numero ai desiderati.

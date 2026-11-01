@@ -1,8 +1,8 @@
 {
-  "name": "collezione-jump",
+  "name": "collezione-fumetti",
   "version": "1.0.0",
   "private": true,
-  "description": "Collezione Jump: app Android e PC per V Jump, Shonen Jump, carte promo e fumetti",
+  "description": "Collezione Fumetti: app Android e PC per fumetti, riviste giapponesi e carte promo",
   "scripts": {
     "android:prepare": "npx cap add android && bash scripts/prepare-android.sh && npx cap sync android"
   },

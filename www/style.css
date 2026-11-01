@@ -182,3 +182,20 @@ header{padding-top:env(safe-area-inset-top)}
 .dot.err{background:var(--red)}
 .dot.busy{background:var(--muted)}
 .foot .grow{flex:1}
+
+/* --- autocompilazione e foto --- */
+.ai-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.hint-p{font-size:13px;color:var(--muted);margin:0}
+.hint-p a{color:var(--red)}
+ol.hint-p{padding-left:20px;display:flex;flex-direction:column;gap:4px;margin:8px 0}
+.aibox{background:color-mix(in srgb,var(--ok) 12%,var(--card));border-left:4px solid var(--ok);padding:8px 12px;font-size:14px;border-radius:4px}
+.aibox.warn{background:color-mix(in srgb,var(--gold) 18%,var(--card));border-left-color:var(--warn)}
+.searchlinks{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{font-size:12px;font-weight:700;text-decoration:none;color:var(--ink);border:1.5px solid var(--line);background:var(--card);padding:3px 10px;border-radius:999px}
+.chip:hover{border-color:var(--red);color:var(--red)}
+.photo-row{display:flex;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:8px}
+.photo-row img{width:56px;aspect-ratio:182/257;object-fit:cover;border-radius:3px}
+.spinner{width:28px;height:28px;border:3px solid var(--line);border-top-color:var(--red);border-radius:50%;animation:spin .9s linear infinite;margin-top:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation-duration:3s}}
+#photo{white-space:nowrap}
