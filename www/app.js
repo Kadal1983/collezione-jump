@@ -351,10 +351,51 @@ function showApp(){ $("#gate").innerHTML = ""; $("#app").hidden = false; render(
 let filter = "Tutti", query = "", view = "grid", openId = null, editing = false;
 function toast(msg){ const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2800); }
 function kind(it){ const t = (it.testata || "").toLowerCase(); if (t.includes("v jump")) return "vj"; if (t.includes("jump")) return "wsj"; return "vol"; }
-function sortKey(it){ return [it.tipo === "volume" ? 1 : 0, (it.testata || "").toLowerCase(), -(it.anno || 0), -(parseInt(it.mese || it.numero) || 0), (it.titolo || "").toLowerCase()]; }
+function sortKey(it){ return [it.tipo === "serie" ? 1 : it.tipo === "volume" ? 2 : 0, (it.testata || "").toLowerCase(), -(it.anno || 0), -(parseInt(it.mese || it.numero) || 0), (it.titolo || "").toLowerCase()]; }
 function cmp(a, b){ const A = sortKey(a), B = sortKey(b); for (let i = 0; i < A.length; i++){ if (A[i] < B[i]) return -1; if (A[i] > B[i]) return 1; } return 0; }
 function cards(it){ return (it.allegati || []).filter(a => a.tipo === "carta"); }
-function groupKey(it){ return it.tipo === "volume" ? (it.editore || "Volumi") : (it.testata || "Altro"); }
+function groupKey(it){ return it.tipo === "serie" ? "Serie" : it.tipo === "volume" ? (it.editore || "Volumi") : (it.testata || "Altro"); }
+
+/* ---------------- serie (tutti i volumi di un'edizione in una sola scheda) ---------------- */
+const VOL_STATI = { ho: "Ce l'ho", manca: "Manca", desiderato: "Desiderato" };
+const STAMPE = { "": "non indicata", prima: "Prima stampa", ristampa: "Ristampa" };
+const STATI_SERIE = { completa: "Completa", "in corso": "In corso", interrotta: "Interrotta" };
+const isSerie = it => it && it.tipo === "serie";
+function volOf(it, n){ return (it.volumi && it.volumi[n]) || {}; }
+function volStato(it, n){ return volOf(it, n).s || "manca"; }
+function serieTot(it){ return Math.max(0, parseInt(it.totale) || 0); }
+function volsWith(it, st){ const o = []; for (let n = 1; n <= serieTot(it); n++) if (volStato(it, n) === st) o.push(n); return o; }
+function serieCount(it){ const ho = volsWith(it, "ho").length, des = volsWith(it, "desiderato").length, tot = serieTot(it); return { tot, ho, des, manca: tot - ho - des }; }
+function parseRange(txt){
+  const out = new Set();
+  String(txt || "").split(/[,;\s]+/).forEach(p => {
+    const m = p.match(/^(\d+)(?:[-–](\d+))?$/); if (!m) return;
+    let a = +m[1], b = m[2] ? +m[2] : a; if (a > b) [a, b] = [b, a];
+    for (let i = Math.max(1, a); i <= b && i <= 3000; i++) out.add(i);
+  });
+  return [...out].sort((x, y) => x - y);
+}
+function fmtRange(nums){
+  nums = [...nums].sort((a, b) => a - b); const r = [];
+  for (let i = 0; i < nums.length;){ let j = i; while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++; r.push(i === j ? String(nums[i]) : nums[i] + "-" + nums[j]); i = j + 1; }
+  return r.join(", ");
+}
+function setVol(it, n, patch){
+  const vols = Object.assign({}, it.volumi || {});
+  const v = Object.assign({}, vols[n] || {}, patch); if (!v.s) v.s = "manca";
+  if (!v.st) delete v.st;
+  if (v.s === "manca" && !v.st) delete vols[n]; else vols[n] = v;
+  it.volumi = vols;
+}
+// tanti tocchi sui volumi = una sola scrittura (dopo 1,2 secondi di pausa)
+const soonT = new Map();
+function saveItemSoon(id, data){
+  const d = structuredClone(data); delete d.id;
+  items.set(id, Object.assign({ id }, d)); persist(); render();
+  clearTimeout(soonT.get(id));
+  soonT.set(id, setTimeout(() => { soonT.delete(id); saveItem(id, items.get(id)); }, 1200));
+}
+function flushSoon(){ for (const [id, t] of soonT){ clearTimeout(t); soonT.delete(id); saveItem(id, items.get(id)); } }
 function fmtDate(s){ if (!s) return ""; const [y, m, d] = s.split("-"); return d ? `${+d} ${MESI[+m - 1]} ${y}` : s; }
 
 function renderStats(){
@@ -363,12 +404,14 @@ function renderStats(){
   $("#st-vj").textContent = own.filter(i => kind(i) === "vj").length;
   $("#st-cards").textContent = c.length;
   $("#st-check").textContent = c.filter(a => a.ho).length + "/" + c.length;
-  $("#st-wish").textContent = all.filter(i => i.stato === "desiderato").length;
+  const serie = all.filter(isSerie);
+  $("#st-serie").textContent = serie.reduce((t, i) => t + serieCount(i).ho, 0);
+  $("#st-wish").textContent = all.filter(i => i.stato === "desiderato").length + serie.reduce((t, i) => t + serieCount(i).des, 0);
 }
 function renderTabs(){
   const g = new Map([["Tutti", items.size]]);
   for (const it of items.values()) g.set(groupKey(it), (g.get(groupKey(it)) || 0) + 1);
-  const w = [...items.values()].filter(i => i.stato === "desiderato").length; if (w) g.set("Desiderati", w);
+  const w = [...items.values()].filter(wanted).length; if (w) g.set("Desiderati", w);
   if (!g.has(filter)) filter = "Tutti";
   const el = $("#tabs"); el.innerHTML = "";
   for (const [k, n] of g){
@@ -376,15 +419,20 @@ function renderTabs(){
     b.innerHTML = esc(k) + '<span class="n">' + n + "</span>"; b.onclick = () => { filter = k; render(); }; el.appendChild(b);
   }
 }
+function wanted(it){ return it.stato === "desiderato" || (isSerie(it) && serieCount(it).des > 0); }
 function matches(it){
-  if (filter === "Desiderati" && it.stato !== "desiderato") return false;
+  if (filter === "Desiderati" && !wanted(it)) return false;
   if (filter !== "Tutti" && filter !== "Desiderati" && groupKey(it) !== filter) return false;
   if (!query) return true;
-  const hay = [it.titolo, it.titoloOriginale, it.testata, it.editore, it.collana, it.autori, it.copertina, it.note, it.anno, it.numero,
+  const hay = [it.titolo, it.titoloOriginale, it.testata, it.editore, it.collana, it.autori, it.copertina, it.note, it.anno, it.numero, it.anni, isSerie(it) ? "serie" : "",
     ...(it.fumetti || []).flatMap(f => [f.titolo, f.autori]), ...(it.allegati || []).flatMap(a => [a.gioco, a.nome, a.codice])].join(" ").toLowerCase();
   return query.toLowerCase().split(/\s+/).every(w => hay.includes(w));
 }
 function placeholder(it){
+  if (isSerie(it)){
+    const c = serieCount(it);
+    return `<div class="ph serie"><div><div class="t">${esc(it.testata || it.titolo || "")}</div><div class="y">${esc(it.editore || "")}${it.anni ? " · " + esc(it.anni) : ""}</div></div><div class="num">${c.tot ? c.ho + "<small>/" + c.tot + "</small>" : "?"}</div><div class="hint">+ foto della serie</div></div>`;
+  }
   const k = kind(it);
   const t = k === "vj" ? "V JUMP" : k === "wsj" ? "SHŌNEN<br>JUMP" : esc(it.testata || it.editore || "");
   const num = it.tipo === "volume" ? "" : esc(it.numero || "");
@@ -399,10 +447,11 @@ function renderGrid(){
   const list = [...items.values()].filter(matches).sort(cmp);
   if (!list.length) return `<p class="empty">${items.size ? "Nessun risultato per questa ricerca." : "La collezione è vuota: premi «+ Aggiungi» per inserire il primo pezzo."}</p>`;
   return '<div class="grid">' + list.map(it => {
-    const c = cards(it); const sub = it.tipo === "volume" ? (it.autori || it.collana || "") : (it.dataUscita ? "uscito il " + fmtDate(it.dataUscita) : "");
+    const c = cards(it); const sc = isSerie(it) ? serieCount(it) : null;
+    const sub = sc ? (sc.tot ? `${sc.ho} di ${sc.tot} volumi` + (sc.des ? ` · ${sc.des} desiderati` : "") : "numero di volumi da indicare") : it.tipo === "volume" ? (it.autori || it.collana || "") : (it.dataUscita ? "uscito il " + fmtDate(it.dataUscita) : "");
     return `<button class="item" type="button" data-id="${esc(it.id)}">
-      <div class="cover">${coverHtml(it)}${c.length ? `<span class="badge">${c.length} carte</span>` : ""}${it.stato === "desiderato" ? '<span class="badge wish">desiderato</span>' : it.stato === "arrivo" ? '<span class="badge wish">in arrivo</span>' : ""}</div>
-      <div class="meta"><span class="k">${esc(it.tipo === "volume" ? (it.editore || "") : it.testata)}</span><span class="n">${esc(it.titolo)}</span><span class="s">${esc(sub)}</span></div>
+      <div class="cover">${coverHtml(it)}${sc && it.coverV ? `<span class="badge">SERIE ${sc.tot ? sc.ho + "/" + sc.tot : ""}</span>` : ""}${c.length ? `<span class="badge">${c.length} carte</span>` : ""}${it.stato === "desiderato" ? '<span class="badge wish">desiderato</span>' : it.stato === "arrivo" ? '<span class="badge wish">in arrivo</span>' : ""}</div>
+      <div class="meta"><span class="k">${esc(it.tipo === "volume" || sc ? (it.editore || "") : it.testata)}</span><span class="n">${esc(it.titolo)}</span><span class="s">${esc(sub)}</span>${sc && sc.tot ? `<span class="bar"><span style="width:${Math.round(sc.ho / sc.tot * 100)}%"></span></span>` : ""}</div>
     </button>`; }).join("") + "</div>";
 }
 function renderYears(){
@@ -434,13 +483,21 @@ function render(){
 
 /* ---------------- scheda ---------------- */
 function openSheet(id){ openId = id; editing = false; $("#scrim").classList.add("open"); $("#sheet").classList.add("open"); renderDetail(); }
-function closeSheet(){ openId = null; editing = false; $("#scrim").classList.remove("open"); $("#sheet").classList.remove("open"); }
+function closeSheet(){ flushSoon(); openId = null; editing = false; $("#scrim").classList.remove("open"); $("#sheet").classList.remove("open"); }
 function sheetOpen(){ return $("#sheet").classList.contains("open"); }
 function renderDetail(){
   const it = items.get(openId); if (!it){ closeSheet(); return; }
-  $("#sheet-title").textContent = it.tipo === "volume" ? (it.editore || "") : it.testata; $("#edit").hidden = false;
-  const c = cards(it);
-  const facts = [
+  $("#sheet-title").textContent = isSerie(it) ? "Serie" : it.tipo === "volume" ? (it.editore || "") : it.testata; $("#edit").hidden = false;
+  const c = cards(it); const sc = isSerie(it) ? serieCount(it) : null;
+  const facts = sc ? [
+    it.editore ? ["Editore", esc(it.editore)] : null,
+    it.collana ? ["Edizione / collana", esc(it.collana)] : null,
+    it.anni ? ["Anni", esc(it.anni)] : null,
+    it.autori ? ["Autori", esc(it.autori)] : null,
+    it.statoSerie ? ["Stato della serie", esc(STATI_SERIE[it.statoSerie] || it.statoSerie)] : null,
+    ["Volumi", sc.tot ? `<b>${sc.ho}</b> di ${sc.tot}` + (sc.des ? ` · ${sc.des} desiderati` : "") : "da indicare (premi Modifica)"],
+    it.condizione ? ["Condizioni", esc(it.condizione)] : null,
+  ].filter(Boolean) : [
     ["Stato", `<span class="pill ${esc(it.stato || "posseduto")}">${STATI[it.stato] || "Posseduto"}</span>`],
     it.tipo !== "volume" && it.numero ? ["Numero", esc(it.numero) + (it.anno ? " / " + it.anno : "")] : null,
     it.dataUscita ? ["Uscita in Giappone", fmtDate(it.dataUscita)] : null,
@@ -456,6 +513,7 @@ function renderDetail(){
     <div class="cover-actions"><a class="btn ghost small" href="https://www.google.com/search?tbm=isch&q=${search}" target="_blank" rel="noopener">Trova copertina</a></div></div>
     <div><h2>${esc(it.titolo)}</h2>${it.titoloOriginale ? `<div class="jp" lang="ja">${esc(it.titoloOriginale)}</div>` : ""}
     <dl class="facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl></div></div>`;
+  if (sc) h += serieSection(it, sc);
   const al = it.allegati || [];
   if (al.length){
     h += `<section class="blk"><h3>Allegati e carte promo <small>${c.filter(a => a.ho).length}/${c.length} carte spuntate</small></h3><ul class="list">` +
@@ -473,9 +531,58 @@ function renderDetail(){
   body.innerHTML = h; body.dataset.for = openId; body.scrollTop = keep;
   $("#up").onclick = () => { $("#file").dataset.target = it.id; $("#file").click(); };
   const rm = $("#rm"); if (rm) rm.onclick = () => removeCover(it.id);
+  if (sc) bindSerie(it);
   document.querySelectorAll("[data-al]").forEach(cb => cb.onchange = () => {
     const next = structuredClone(items.get(it.id)); next.allegati[+cb.dataset.al].ho = cb.checked; saveItem(it.id, next);
   });
+}
+
+let volMode = "stato";   // cosa fa il tocco su un volume: "stato" o "stampa"
+function serieSection(it, sc){
+  if (!sc.tot) return `<section class="blk"><h3>Volumi</h3><div class="aibox warn">Indica quanti volumi ha la serie: premi <b>Modifica</b> e compila «Volumi totali».</div></section>`;
+  const cell = n => {
+    const v = volOf(it, n), st = v.s || "manca";
+    const mark = v.st === "prima" ? '<i title="Prima stampa">1ª</i>' : v.st === "ristampa" ? '<i title="Ristampa">R</i>' : "";
+    return `<button type="button" class="vol ${st}" data-vol="${n}" aria-label="Volume ${n}: ${VOL_STATI[st]}${v.st ? ", " + STAMPE[v.st] : ""}">${n}${mark}</button>`;
+  };
+  let cells = ""; for (let n = 1; n <= sc.tot; n++) cells += cell(n);
+  const manc = volsWith(it, "manca"), des = volsWith(it, "desiderato");
+  return `<section class="blk"><h3>Volumi <small>${sc.ho} di ${sc.tot} · ${Math.round(sc.ho / sc.tot * 100)}%</small></h3>
+    <span class="bar big"><span style="width:${Math.round(sc.ho / sc.tot * 100)}%"></span></span>
+    <div class="voltools"><span class="hint-p">Toccando un numero:</span>
+      <button type="button" class="tab" data-vm="stato" aria-pressed="${volMode === "stato"}">cambio stato</button>
+      <button type="button" class="tab" data-vm="stampa" aria-pressed="${volMode === "stampa"}">prima stampa / ristampa</button></div>
+    <div class="vols">${cells}</div>
+    <p class="hint-p legend"><span class="sw ho"></span>ce l'ho <span class="sw desiderato"></span>desiderato <span class="sw manca"></span>manca · <b>1ª</b> prima stampa · <b>R</b> ristampa</p>
+    <form id="vol-bulk" class="ai-row" novalidate>
+      <label class="f">Segna come<select id="vb-s">${Object.entries(VOL_STATI).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+      <label class="f">i volumi<input id="vb-r" inputmode="numeric" placeholder="es. 1-40, 42, 45-62"></label>
+      <button class="btn small" type="submit">Applica</button>
+    </form>
+    <div class="miss"><p class="hint-p"><b>Mancanti (${manc.length}):</b> ${manc.length ? esc(fmtRange(manc)) : "nessuno 🎉"}${des.length ? ` · <b>Desiderati:</b> ${esc(fmtRange(des))}` : ""}</p>
+    ${manc.length || des.length ? '<button class="btn ghost small" type="button" id="copy-miss">Copia elenco mancanti</button>' : ""}</div>
+  </section>`;
+}
+function bindSerie(it){
+  document.querySelectorAll("[data-vm]").forEach(b => b.onclick = () => { volMode = b.dataset.vm; renderDetail(); });
+  document.querySelectorAll("[data-vol]").forEach(b => b.onclick = () => {
+    const cur = structuredClone(items.get(it.id)); const n = +b.dataset.vol; const v = volOf(cur, n);
+    if (volMode === "stampa"){ const nx = { "": "prima", prima: "ristampa", ristampa: "" }[v.st || ""]; setVol(cur, n, { st: nx, s: v.s || "ho" }); }
+    else { const nx = { manca: "ho", ho: "desiderato", desiderato: "manca" }[v.s || "manca"]; setVol(cur, n, { s: nx }); }
+    saveItemSoon(it.id, cur);
+  });
+  const f = $("#vol-bulk"); if (f) f.onsubmit = e => {
+    e.preventDefault();
+    const nums = parseRange($("#vb-r").value).filter(n => n <= serieTot(it));
+    if (!nums.length){ toast("Scrivi i numeri, per esempio 1-40, 42."); return; }
+    const cur = structuredClone(items.get(it.id)); const st = $("#vb-s").value;
+    nums.forEach(n => setVol(cur, n, { s: st }));
+    saveItemSoon(it.id, cur); toast(`${nums.length} volumi segnati come «${VOL_STATI[st]}».`);
+  };
+  const cp = $("#copy-miss"); if (cp) cp.onclick = async () => {
+    const t = `${it.titolo}${it.editore && !String(it.titolo).includes(it.editore) ? " (" + it.editore + ")" : ""}\nMi mancano: ${fmtRange(volsWith(it, "manca")) || "nessuno"}` + (volsWith(it, "desiderato").length ? `\nCerco in particolare: ${fmtRange(volsWith(it, "desiderato"))}` : "");
+    try { await navigator.clipboard.writeText(t); toast("Elenco copiato: incollalo dove vuoi."); } catch { toast("Non riesco a copiare: " + t.replace(/\n/g, " · ")); }
+  };
 }
 
 /* ---------------- intelligenza artificiale (Gemini, piano gratuito) ---------------- */
@@ -572,7 +679,7 @@ async function gemini(build, { modes = ["search", "url", "none"], key = aiKey } 
 const AI_SCHEMA = `{
   "riconosciuto": true,
   "confidenza": "alta | media | bassa",
-  "tipo": "rivista | volume",
+  "tipo": "rivista | volume | serie",
   "testata": "es. V Jump, Weekly Shonen Jump, One Piece, Batman",
   "editore": "es. Shueisha, Panini Comics, Star Comics",
   "collana": "es. DC Black Label, Planet Manga (vuoto per le riviste)",
@@ -587,6 +694,12 @@ const AI_SCHEMA = `{
   "autori": "autori (soprattutto per i volumi)",
   "fumetti": [{ "titolo": "serie e capitolo/arco", "autori": "soggetto / disegni", "verificato": true }],
   "allegati": [{ "tipo": "carta | codice | libretto | adesivi | altro", "gioco": "es. Yu-Gi-Oh! OCG", "nome": "nome della carta o dell'allegato", "codice": "es. VJMP-JP281" }],
+  "totale": "solo per tipo serie: numero totale di volumi dell'edizione, es. 42",
+  "anni": "solo per tipo serie: anni di pubblicazione, es. 1995–1997",
+  "statoSerie": "solo per tipo serie: completa | in corso | interrotta",
+  "annoCerto": "true se l'anno è stampato o certo, false se l'hai dedotto",
+  "anniPossibili": [2026, 2020],
+  "dataCopertina": "data stampata in copertina, es. 5/28 (vuoto se non c'è)",
   "note": "dubbi, cose da verificare, differenze tra le fonti"
 }`;
 const MESI_IT = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
@@ -617,7 +730,13 @@ function aiPrompt(kind, query, mode, info = {}){
   const task = kind === "foto-id"
     ? "Nell'immagine c'è la copertina di un fumetto o di una rivista fotografata dal collezionista. Leggi con attenzione testata, numero, mese/anno o numero di volume stampati in copertina e riconosci la pubblicazione esatta. Elenca anche le carte promo e gli allegati annunciati in copertina (付録)."
     : `Il collezionista cerca: "${query}". Identifica esattamente quella pubblicazione e ${how} i dati del numero: data di uscita, prezzo, chi c'è in copertina, fumetti pubblicati, carte promo e allegati (付録), codici digitali.`;
-  return `Sei un esperto di fumetti, manga e riviste giapponesi (V Jump, Weekly Shōnen Jump, Saikyō Jump...) e delle edizioni italiane (Panini, Star Comics, J-Pop, Planet Manga).
+  const oggi = new Date().toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
+  const fotoRegole = kind === "foto-id" ? `
+- ATTENZIONE ALL'ANNO: le riviste settimanali giapponesi (Weekly Shōnen Jump, Champion, Magazine, Sunday…) di solito NON stampano l'anno in copertina, solo il numero (es. 24) e una data (es. 5/28). Se l'anno non è scritto chiaramente, NON indovinarlo: metti "annoCerto": false, in "anno" l'anno più probabile e in "anniPossibili" tutti gli anni compatibili con numero, data, prezzo e serie annunciate in copertina (fino a 4).
+- Oggi è ${oggi}: la foto è spesso di un numero recente, anche più nuovo di quelli che conosci. Se in copertina vedi un nuovo arco o una nuova serie che non conosci, è probabilmente un numero uscito dopo le tue conoscenze: includi l'anno in corso tra gli anni possibili.
+- Copia in "dataCopertina" la data stampata in copertina e in "prezzo" il prezzo stampato (es. 400円).
+- Nel "titolo" metti l'anno solo se "annoCerto" è true.` : "";
+  return `Sei un esperto di fumetti, manga e riviste giapponesi (V Jump, Weekly Shōnen Jump, Champion, Saikyō Jump...) e delle edizioni italiane (Panini, Star Comics, J-Pop, Planet Manga). Oggi è ${oggi}.
 ${task}
 
 Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, con questa struttura:
@@ -630,7 +749,9 @@ Regole:
 ${esempi || "- V Jump – Marzo 2026 (n. 3/2026, 特大号)\n- Weekly Shōnen Jump n. 34/2022 – Ritorno di One Piece (cap. 1054)\n- Batman: Anno Uno"}
 - "verificato": false per i fumetti che non trovi confermati su quel numero preciso.
 - Non inventare: se un dato non lo sai con sicurezza (soprattutto i nomi delle carte), lascia il campo vuoto e scrivilo in "note".${mode === "none" ? "\n- Senza internet i dettagli del numero sono incerti: usa \"confidenza\": \"bassa\" o \"media\"." : ""}
-- Se non riesci a capire di che pubblicazione si tratta: "riconosciuto": false e in "note" descrivi cosa vedi o cosa manca.`;
+- Se il collezionista cerca un'intera serie o edizione (tutti i volumi), usa "tipo": "serie": indica editore, collana/edizione, anni, autori, "totale" (numero di volumi di QUELLA edizione italiana o originale) e "statoSerie"; lascia vuoti numero, mese, fumetti e allegati.
+- Se riconosci un singolo volume di una serie (es. il n. 12 di un manga), usa "tipo": "volume", "testata" = nome della serie e "numero" = numero del volume.
+- Se non riesci a capire di che pubblicazione si tratta: "riconosciuto": false e in "note" descrivi cosa vedi o cosa manca.${fotoRegole}`;
 }
 function parseAiJson(text){
   const t = String(text || "").replace(/```(?:json)?/gi, "");
@@ -647,7 +768,8 @@ function normalizeAi(r, fonti, mode){
   if (mode === "none" && conf === "alta") conf = "media";
   return {
     riconosciuto: r.riconosciuto !== false, confidenza: conf, mode,
-    tipo: r.tipo === "volume" ? "volume" : "rivista",
+    tipo: ["volume", "serie"].includes(r.tipo) ? r.tipo : "rivista",
+    totale: n(r.totale), anni: s(r.anni), statoSerie: Object.keys(STATI_SERIE).includes(s(r.statoSerie).toLowerCase()) ? s(r.statoSerie).toLowerCase() : "",
     testata: s(r.testata), editore: s(r.editore), collana: s(r.collana),
     anno: n(r.anno), mese: (n(r.mese) >= 1 && n(r.mese) <= 12) ? n(r.mese) : null, numero: s(r.numero),
     titolo: s(r.titolo), titoloOriginale: s(r.titoloOriginale),
@@ -655,18 +777,29 @@ function normalizeAi(r, fonti, mode){
     prezzo: s(r.prezzo), copertina: s(r.copertina), autori: s(r.autori), note: s(r.note),
     fumetti: (Array.isArray(r.fumetti) ? r.fumetti : []).map(f => ({ titolo: s(f && f.titolo), autori: s(f && f.autori), verificato: mode === "none" ? false : !!(f && f.verificato) })).filter(f => f.titolo),
     allegati: (Array.isArray(r.allegati) ? r.allegati : []).map(a => ({ tipo: tipi.includes(a && a.tipo) ? a.tipo : "altro", gioco: s(a && a.gioco), nome: s(a && a.nome), codice: s(a && a.codice), ho: false })).filter(a => a.nome || a.gioco),
+    annoCerto: !(r.annoCerto === false || r.annoCerto === "false"),
+    anniPossibili: [...new Set((Array.isArray(r.anniPossibili) ? r.anniPossibili : []).map(n).filter(y => y && y > 1900 && y < 2100))].slice(0, 4),
+    dataCopertina: s(r.dataCopertina),
     fonti: [...new Set(fonti || [])].slice(0, 8)
   };
 }
-async function aiLookup({ query, imageDataUrl, hint = {} }){
-  if (imageDataUrl){
-    // 1) leggo la copertina (non serve internet)
-    const id = await gemini(() => [{ text: aiPrompt("foto-id", "", "none") }, { inlineData: { mimeType: "image/jpeg", data: imageDataUrl.split(",")[1] } }], { modes: ["none"] });
-    const a = normalizeAi(parseAiJson(id.text), [], "foto");
-    if (!a.riconosciuto || !a.titolo) return a;
-    // 2) cerco i dettagli di quel numero; se non riesco tengo quello che c'è in copertina
+/* foto, passo 1: leggo la copertina (non serve internet) */
+async function aiIdentify(imageDataUrl){
+  const id = await gemini(() => [{ text: aiPrompt("foto-id", "", "none") }, { inlineData: { mimeType: "image/jpeg", data: imageDataUrl.split(",")[1] } }], { modes: ["none"] });
+  return normalizeAi(parseAiJson(id.text), [], "foto");
+}
+/* cambio l'anno anche nei titoli (es. dopo che l'hai scelto tu) */
+function setYear(a, y){
+  const old = a.anno; a.anno = y; a.annoCerto = true;
+  const fix = t => !t ? t : (old && String(t).includes(String(old)) ? String(t).split(String(old)).join(String(y)) : t);
+  a.titolo = fix(a.titolo); a.titoloOriginale = fix(a.titoloOriginale);
+  if (a.titolo && !a.titolo.includes(String(y)) && a.numero && a.tipo === "rivista") a.titolo = a.titolo.replace(new RegExp("n\\.\\s*" + a.numero + "(?!\\d|/)"), "n. " + a.numero + "/" + y);
+  return a;
+}
+/* foto, passo 2: cerco i dettagli di quel numero; se non riesco tengo quello che c'è in copertina */
+async function aiDetails(a){
     try {
-      const q = [a.titoloOriginale, a.titolo].filter(Boolean).join(" / ");
+      const q = [a.titoloOriginale, a.titolo, a.anno && ("anno " + a.anno), a.dataCopertina && ("data di copertina " + a.dataCopertina)].filter(Boolean).join(" / ");
       const b = await aiLookup({ query: q, hint: { y: a.anno, m: a.mese } });
       if (!b.riconosciuto) return a;
       const merged = Object.assign({}, b);
@@ -675,12 +808,30 @@ async function aiLookup({ query, imageDataUrl, hint = {} }){
       merged.allegati = b.allegati.concat(a.allegati.filter(x => !names.has(x.nome.toLowerCase())));
       merged.note = [a.note, b.note].filter(Boolean).join("\n");
       merged.confidenza = b.mode === "none" ? "bassa" : b.confidenza;
+      if (a.prezzo && !b.prezzo) merged.prezzo = a.prezzo;
       return merged;
     } catch { return a; }
-  }
+}
+async function aiLookup({ query, imageDataUrl, hint = {} }){
+  if (imageDataUrl){ const a = await aiIdentify(imageDataUrl); return (!a.riconosciuto || !a.titolo) ? a : aiDetails(a); }
   const g = guessYM(query); const info = { text: query, y: hint.y || g.y, m: hint.m || g.m };
   const res = await gemini(mode => mode === "url" && !pagesFor(info).length ? null : [{ text: aiPrompt("testo", query, mode, info) }]);
   return normalizeAi(parseAiJson(res.text), res.fonti, res.mode);
+}
+/* foto di un volume che appartiene a una serie già in collezione */
+function findSerieFor(r){
+  const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9\u3040-\u30ff\u4e00-\u9fff]/g, "");
+  const num = parseInt(r.numero); if (!num || r.tipo === "rivista") return null;
+  const name = norm(r.testata || ""); if (name.length < 3) return null;
+  for (const it of items.values()){
+    if (!isSerie(it)) continue;
+    const t = norm(it.testata || it.titolo);
+    if (!(t === name || norm(it.titolo).includes(name) || name.includes(t))) continue;
+    if (it.editore && r.editore && norm(it.editore) !== norm(r.editore) && !norm(it.editore).includes(norm(r.editore)) && !norm(r.editore).includes(norm(it.editore))) continue;
+    if (serieTot(it) && num > serieTot(it)) continue;
+    return { serie: it, num };
+  }
+  return null;
 }
 /* doppioni: stessa testata e stesso numero/anno, oppure stesso titolo originale */
 function findDuplicate(r){
@@ -762,6 +913,24 @@ async function photoToDataUrl(file, max = 1024, q = 0.82){
   cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
   return cv.toDataURL("image/jpeg", q);
 }
+/* l'anno non è stampato in copertina: lo chiedo a te (un tocco) invece di tirare a indovinare */
+function askYear(body, photo, r){
+  return new Promise(resolve => {
+    const now = new Date().getFullYear();
+    const ys = [...new Set([...(r.anniPossibili || []), r.anno, now, now - 1].filter(Boolean))].sort((a, b) => b - a).slice(0, 5);
+    body.innerHTML = `<div class="hero"><div><div class="cover"><img src="${photo}" alt="La tua foto"></div></div>
+      <div><h2>Di che anno è?</h2>
+      <p class="hint-p">Ho letto: <b>${esc(r.testata || r.titolo)}${r.numero ? " n. " + esc(r.numero) : ""}</b>${r.dataCopertina ? ", data di copertina <b>" + esc(r.dataCopertina) + "</b>" : ""}.</p>
+      <p class="hint-p">L'anno non è stampato in copertina e da solo non posso esserne sicuro.${r.anno ? " Il più probabile secondo Gemini è il <b>" + r.anno + "</b>." : ""} Quale?</p>
+      <div class="cover-actions">${ys.map(y => `<button class="btn ${y === now ? "primary" : "ghost"}" type="button" data-y="${y}">${y}</button>`).join("")}</div>
+      <form id="y-frm" class="ai-row" novalidate style="margin-top:8px"><label class="f">Altro anno<input id="y-in" type="number" inputmode="numeric" min="1950" max="${now + 1}" placeholder="es. 2018" style="width:110px"></label><button class="btn small" type="submit">Continua</button></form>
+      <p class="hint-p" style="margin-top:8px">Indizio: nel retro o nella prima pagina interna l'anno è quasi sempre stampato in piccolo.</p></div></div>`;
+    body.querySelectorAll("[data-y]").forEach(b => b.onclick = () => resolve(+b.dataset.y));
+    $("#y-frm").onsubmit = e => { e.preventDefault(); const y = parseInt($("#y-in").value); if (y > 1900 && y <= now + 1) resolve(y); else toast("Scrivi un anno valido."); };
+    const obs = new MutationObserver(() => { if (!$("#sheet").classList.contains("open")){ obs.disconnect(); resolve(null); } });
+    obs.observe($("#sheet"), { attributes: true, attributeFilter: ["class"] });
+  });
+}
 async function photoSearch(file){
   if (!aiKey){ openSettings("Per riconoscere le copertine serve la chiave gratuita di Gemini."); return; }
   let photo; try { photo = await photoToDataUrl(file); } catch { toast("Non riesco a leggere questa foto."); return; }
@@ -770,10 +939,15 @@ async function photoSearch(file){
   $("#sheet-title").textContent = "Riconoscimento copertina"; $("#edit").hidden = true;
   const body = $("#sheet-body"); body.dataset.for = "";
   body.innerHTML = `<div class="hero"><div><div class="cover"><img src="${photo}" alt="La tua foto"></div></div>
-    <div><h2>Sto riconoscendo la copertina…</h2><p class="hint-p">Gemini guarda la foto e cerca i dati del numero su Google. Di solito bastano 10–30 secondi.</p><div class="spinner" aria-hidden="true"></div></div></div>`;
+    <div><h2>Sto riconoscendo la copertina…</h2><p class="hint-p">Gemini legge testata, numero e allegati stampati in copertina. Di solito bastano 5–20 secondi.</p><div class="spinner" aria-hidden="true"></div></div></div>`;
   try {
-    const r = await aiLookup({ imageDataUrl: photo });
+    let r = await aiIdentify(photo);
     if (!$("#sheet").classList.contains("open")) return;            // chiuso nel frattempo
+    if (r.riconosciuto && r.titolo && r.tipo === "rivista" && (!r.annoCerto || !r.anno)){
+      const y = await askYear(body, photo, r);
+      if (!y || !$("#sheet").classList.contains("open")) return;
+      setYear(r, y);
+    }
     if (!r.riconosciuto || !r.titolo){
       body.innerHTML = `<div class="hero"><div><div class="cover"><img src="${photo}" alt="La tua foto"></div></div>
         <div><h2>Non l'ho riconosciuto</h2><p class="hint-p">${esc(r.note || "La foto non basta per capire di che numero si tratta.")}</p>
@@ -782,17 +956,37 @@ async function photoSearch(file){
       $("#ph-retry").onclick = () => $("#file-photo").click();
       return;
     }
+    const sm = findSerieFor(r);
+    if (sm){
+      const st = volStato(sm.serie, sm.num);
+      body.innerHTML = `<div class="hero"><div><div class="cover"><img src="${photo}" alt="La tua foto"></div></div>
+        <div><h2>Volume ${sm.num} di una tua serie</h2><p class="hint-p">Ho riconosciuto <b>${esc(r.titolo)}</b>: è il n. ${sm.num} di <b>${esc(sm.serie.titolo)}</b>.</p>
+        <p class="hint-p">Adesso è segnato come: <b>${VOL_STATI[st]}</b></p>
+        <div class="cover-actions"><button class="btn primary" type="button" id="ph-ho">Segna «ce l'ho»</button><button class="btn ghost" type="button" id="ph-des">Segna «desiderato»</button></div>
+        <div class="cover-actions"><button class="btn ghost small" type="button" id="ph-serie">Apri la serie</button><button class="btn ghost small" type="button" id="ph-sep">È un pezzo a parte: aggiungi</button></div></div></div>`;
+      const mark = s2 => { const cur = structuredClone(items.get(sm.serie.id)); setVol(cur, sm.num, { s: s2 }); saveItem(sm.serie.id, cur); toast(`Volume ${sm.num} segnato come «${VOL_STATI[s2]}».`); editing = false; openSheet(sm.serie.id); };
+      $("#ph-ho").onclick = () => mark("ho"); $("#ph-des").onclick = () => mark("desiderato");
+      $("#ph-serie").onclick = () => { editing = false; openSheet(sm.serie.id); };
+      $("#ph-sep").onclick = () => openForm(null, aiPreset(r), { photo, ai: r });
+      return;
+    }
     const dup = findDuplicate(r);
+    const goForm = async () => {
+      body.innerHTML = `<div class="hero"><div><div class="cover"><img src="${photo}" alt="La tua foto"></div></div>
+        <div><h2>${esc(r.titolo)}</h2><p class="hint-p">Cerco i dettagli del numero (fumetti, allegati, data di uscita)…</p><div class="spinner" aria-hidden="true"></div></div></div>`;
+      const full = await aiDetails(r);
+      if ($("#sheet").classList.contains("open")) openForm(null, aiPreset(full), { photo, ai: full });
+    };
     if (dup){
       body.innerHTML = `<div class="hero"><div><div class="cover"><img src="${photo}" alt="La tua foto"></div></div>
         <div><h2>Ce l'hai già!</h2><p class="hint-p">Ho riconosciuto <b>${esc(r.titolo)}</b> ed è già nella tua collezione come:</p>
         <p><b>${esc(dup.titolo)}</b> <span class="pill ${esc(dup.stato || "posseduto")}">${STATI[dup.stato] || "Posseduto"}</span></p>
         <div class="cover-actions"><button class="btn primary" type="button" id="ph-open">Apri la scheda</button><button class="btn ghost" type="button" id="ph-add">È un'altra copia: aggiungi</button></div></div></div>`;
       $("#ph-open").onclick = () => { editing = false; openSheet(dup.id); };
-      $("#ph-add").onclick = () => openForm(null, aiPreset(r), { photo, ai: r });
+      $("#ph-add").onclick = () => goForm();
       return;
     }
-    openForm(null, aiPreset(r), { photo, ai: r });
+    await goForm();
   } catch (err) {
     body.innerHTML = `<div class="hero"><div><div class="cover"><img src="${photo}" alt="La tua foto"></div></div>
       <div><h2>Riconoscimento non riuscito</h2><p class="hint-p">${esc(err instanceof AiError ? err.message : "Errore imprevisto: riprova.")}</p>
@@ -801,7 +995,7 @@ async function photoSearch(file){
   }
 }
 function aiPreset(r){
-  const p = {}; for (const k of ["tipo","testata","editore","collana","anno","mese","numero","titolo","titoloOriginale","dataUscita","prezzo","copertina","autori","fumetti","allegati","fonti"]) p[k] = r[k];
+  const p = {}; for (const k of ["tipo","testata","editore","collana","anno","mese","numero","titolo","titoloOriginale","dataUscita","prezzo","copertina","autori","fumetti","allegati","fonti","totale","anni","statoSerie"]) p[k] = r[k];
   p.stato = "posseduto";
   p.note = aiNote(r);
   return p;
@@ -825,14 +1019,15 @@ function openForm(id, preset = {}, opts = {}){
   const testate = [...new Set(["V Jump", "Weekly Shonen Jump", ...[...items.values()].map(i => i.testata)].filter(Boolean))];
   const body = $("#sheet-body"); body.dataset.for = "";
   const aiBox = opts.ai ? `<div class="aibox ${opts.ai.confidenza === "alta" ? "" : "warn"}"><b>Compilato da Gemini</b> · fonte: ${esc(MODE_LABEL[opts.ai.mode] || "lettura della copertina")} · affidabilità ${esc(opts.ai.confidenza || "non indicata")}. Controlla i dati prima di salvare: i campi incerti sono indicati nelle note.</div>` : "";
-  body.innerHTML = `<form id="frm" novalidate>
+  const hoNow = isSerie(it) ? fmtRange(volsWith(it, "ho")) : "";
+  body.innerHTML = `<form id="frm" novalidate data-tipo="${esc(it.tipo || "rivista")}">
     <div id="f-aibox">${aiBox}</div>
     ${pendingPhoto ? `<div class="photo-row"><img src="${pendingPhoto}" alt=""><span class="hint-p">La tua foto diventerà la copertina di questo pezzo.</span></div>` : ""}
     <datalist id="giochi">${giochi.map(g => `<option value="${esc(g)}">`).join("")}</datalist>
     <datalist id="testate">${testate.map(g => `<option value="${esc(g)}">`).join("")}</datalist>
     <div class="row">
-      <label class="f">Tipo<select name="tipo" id="f-tipo"><option value="rivista" ${it.tipo !== "volume" ? "selected" : ""}>Rivista</option><option value="volume" ${it.tipo === "volume" ? "selected" : ""}>Volume / albo</option></select></label>
-      <label class="f">Stato<select name="stato" id="f-stato">${Object.entries(STATI).map(([k, v]) => `<option value="${k}" ${it.stato === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      <label class="f">Tipo<select name="tipo" id="f-tipo"><option value="rivista" ${it.tipo !== "volume" && it.tipo !== "serie" ? "selected" : ""}>Rivista</option><option value="volume" ${it.tipo === "volume" ? "selected" : ""}>Volume / albo</option><option value="serie" ${it.tipo === "serie" ? "selected" : ""}>Serie (tutti i volumi)</option></select></label>
+      <label class="f only-single">Stato<select name="stato" id="f-stato">${Object.entries(STATI).map(([k, v]) => `<option value="${k}" ${it.stato === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
     </div>
     <label class="f">Titolo completo<input name="titolo" id="f-titolo" required value="${esc(it.titolo)}" placeholder="es. V Jump – Aprile 2026 (n. 4/2026)"></label>
     <div class="ai-row">
@@ -840,13 +1035,20 @@ function openForm(id, preset = {}, opts = {}){
       <span class="hint-p">Scrivi il titolo (anche breve, es. «V Jump aprile 2025») e premi Compila: riempie i campi vuoti.</span>
     </div>
     <div class="searchlinks" id="f-links"></div>
+    <div class="row only-serie">
+      <label class="f">Volumi totali<input name="totale" id="f-totale" type="number" min="1" inputmode="numeric" value="${esc(it.totale)}" placeholder="es. 42"></label>
+      <label class="f">Anni di pubblicazione<input name="anni" id="f-anni" value="${esc(it.anni)}" placeholder="es. 1995–1997"></label>
+      <label class="f">Stato della serie<select name="statoSerie" id="f-statoserie"><option value="">—</option>${Object.entries(STATI_SERIE).map(([k, v]) => `<option value="${k}" ${it.statoSerie === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+    </div>
+    <label class="f only-serie">Volumi che hai (numeri o intervalli)<input name="range" id="f-range" inputmode="numeric" value="${esc(hoNow)}" placeholder="es. 1-40, 42, 45-62"></label>
+    <p class="hint-p only-serie">Poi, nella scheda della serie, tocchi i singoli numeri per segnarli «ce l'ho», «manca», «desiderato» o «prima stampa / ristampa».</p>
     <label class="f">Titolo originale<input name="titoloOriginale" id="f-jp" value="${esc(it.titoloOriginale)}" placeholder="es. Vジャンプ 2026年4月号"></label>
     <div class="row">
       <label class="f">Testata / serie<input name="testata" id="f-testata" list="testate" value="${esc(it.testata)}"></label>
       <label class="f">Editore<input name="editore" id="f-editore" value="${esc(it.editore)}"></label>
-      <label class="f">Collana<input name="collana" id="f-collana" value="${esc(it.collana)}"></label>
+      <label class="f">Collana / edizione<input name="collana" id="f-collana" value="${esc(it.collana)}" placeholder="es. prima edizione"></label>
     </div>
-    <div class="row">
+    <div class="row only-single">
       <label class="f">Anno<input name="anno" id="f-anno" type="number" inputmode="numeric" value="${esc(it.anno)}"></label>
       <label class="f">Mese (1–12)<input name="mese" id="f-mese" type="number" min="1" max="12" inputmode="numeric" value="${esc(it.mese)}"></label>
       <label class="f">Numero<input name="numero" id="f-numero" value="${esc(it.numero)}"></label>
@@ -854,17 +1056,18 @@ function openForm(id, preset = {}, opts = {}){
     </div>
     <div class="row">
       <label class="f">Autori<input name="autori" id="f-autori" value="${esc(it.autori)}"></label>
-      <label class="f">Prezzo<input name="prezzo" id="f-prezzo" value="${esc(it.prezzo)}"></label>
+      <label class="f only-single">Prezzo<input name="prezzo" id="f-prezzo" value="${esc(it.prezzo)}"></label>
       <label class="f">Condizioni<input name="condizione" id="f-cond" value="${esc(it.condizione)}" placeholder="es. sigillato, ottimo"></label>
     </div>
-    <label class="f">In copertina<input name="copertina" id="f-cop" value="${esc(it.copertina)}"></label>
-    <section class="blk"><h3>Allegati e carte promo</h3><div class="sub" id="f-al">${(it.allegati || []).map(subAllegato).join("")}</div><button type="button" class="btn ghost small" id="add-al" style="margin-top:6px">+ Allegato</button></section>
-    <section class="blk"><h3>Fumetti contenuti</h3><div class="sub" id="f-fu">${(it.fumetti || []).map(subFumetto).join("")}</div><button type="button" class="btn ghost small" id="add-fu" style="margin-top:6px">+ Fumetto</button></section>
+    <label class="f only-single">In copertina<input name="copertina" id="f-cop" value="${esc(it.copertina)}"></label>
+    <section class="blk only-single"><h3>Allegati e carte promo</h3><div class="sub" id="f-al">${(it.allegati || []).map(subAllegato).join("")}</div><button type="button" class="btn ghost small" id="add-al" style="margin-top:6px">+ Allegato</button></section>
+    <section class="blk only-single"><h3>Fumetti contenuti</h3><div class="sub" id="f-fu">${(it.fumetti || []).map(subFumetto).join("")}</div><button type="button" class="btn ghost small" id="add-fu" style="margin-top:6px">+ Fumetto</button></section>
     <label class="f">Note<textarea name="note" id="f-note">${esc(it.note)}</textarea></label>
     <label class="f">Fonti (un link per riga)<textarea name="fonti" id="f-fonti">${esc((it.fonti || []).join("\n"))}</textarea></label>
     <div class="formbar">${id ? '<button type="button" class="btn ghost" id="del">Elimina</button>' : ""}<span style="flex:1"></span><button type="button" class="btn ghost" id="cancel">Annulla</button><button type="submit" class="btn primary">Salva</button></div>
   </form>`;
   body.scrollTop = 0;
+  $("#f-tipo").addEventListener("change", () => { $("#frm").dataset.tipo = $("#f-tipo").value; });
   const formVals = () => ({ titolo: $("#f-titolo").value, titoloOriginale: $("#f-jp").value, testata: $("#f-testata").value, tipo: $("#f-tipo").value, anno: parseInt($("#f-anno").value) || null, mese: parseInt($("#f-mese").value) || null });
   const drawLinks = () => { $("#f-links").innerHTML = '<span class="hint-p">Cerca su:</span> ' + searchLinks(formVals()).map(([n, u]) => `<a class="chip" href="${esc(u)}" target="_blank" rel="noopener">${esc(n)}</a>`).join(""); };
   drawLinks(); ["#f-titolo","#f-jp","#f-testata","#f-tipo","#f-anno","#f-mese"].forEach(s => $(s).addEventListener("input", drawLinks));
@@ -874,7 +1077,7 @@ function openForm(id, preset = {}, opts = {}){
     if (!aiKey){ openSettings("Per usare Compila serve la chiave gratuita di Gemini."); return; }
     const b = $("#f-ai"); b.disabled = true; b.textContent = "Cerco… (10–30 s)";
     try {
-      const r = await aiLookup({ query: [q, $("#f-testata").value, $("#f-anno").value && ("anno " + $("#f-anno").value), $("#f-mese").value && ("mese " + $("#f-mese").value)].filter(Boolean).join(", "), hint: { y: parseInt($("#f-anno").value) || null, m: parseInt($("#f-mese").value) || null } });
+      const r = await aiLookup({ query: [q, $("#f-tipo").value === "serie" ? "serie completa: tutti i volumi di questa edizione" : "", $("#f-testata").value, $("#f-anno").value && ("anno " + $("#f-anno").value), $("#f-mese").value && ("mese " + $("#f-mese").value)].filter(Boolean).join(", "), hint: { y: parseInt($("#f-anno").value) || null, m: parseInt($("#f-mese").value) || null } });
       if (!$("#f-ai")) return;
       if (!r.riconosciuto){ $("#f-aibox").innerHTML = `<div class="aibox warn"><b>Gemini non ha trovato questo numero.</b> ${esc(r.note)} Prova a scrivere il titolo in modo più preciso o usa i pulsanti «Cerca su».</div>`; return; }
       const n = fillForm(r);
@@ -894,9 +1097,24 @@ function openForm(id, preset = {}, opts = {}){
     for (const [k, v] of fd.entries()) d[k] = String(v).trim();
     if (!d.titolo){ toast("Scrivi almeno il titolo."); $("#f-titolo").focus(); return; }
     d.anno = d.anno ? parseInt(d.anno) : null; d.mese = d.mese ? parseInt(d.mese) : null;
+    const range = d.range; delete d.range;
+    if (d.tipo === "serie"){
+      d.totale = parseInt(d.totale) || null; d.stato = "posseduto";
+      const prevIt = id ? items.get(id) : null;
+      const tmp = { volumi: structuredClone((prevIt && prevIt.volumi) || {}), totale: d.totale };
+      const want = new Set(parseRange(range));
+      if (d.totale) for (const n of want) if (n > d.totale) want.delete(n);
+      for (let n = 1; n <= (d.totale || 0); n++){
+        const cur = volStato(tmp, n);
+        if (want.has(n) && cur !== "ho") setVol(tmp, n, { s: "ho" });
+        if (!want.has(n) && cur === "ho") setVol(tmp, n, { s: "manca" });
+      }
+      d.volumi = tmp.volumi; d.allegati = []; d.fumetti = [];
+      ["mese", "numero", "dataUscita", "prezzo", "copertina"].forEach(k => delete d[k]);
+    } else { delete d.totale; delete d.anni; delete d.statoSerie; }
     d.fonti = d.fonti ? d.fonti.split(/\n+/).map(s => s.trim()).filter(Boolean) : [];
-    d.fumetti = [...document.querySelectorAll("#f-fu .subrow")].map(r => ({ titolo: r.querySelector('[data-k="titolo"]').value.trim(), autori: r.querySelector('[data-k="autori"]').value.trim(), verificato: r.querySelector('[data-k="verificato"]').value !== "0" })).filter(f => f.titolo);
-    d.allegati = [...document.querySelectorAll("#f-al .subrow")].map(r => ({ tipo: r.querySelector('[data-k="tipo"]').value, gioco: r.querySelector('[data-k="gioco"]').value.trim(), nome: r.querySelector('[data-k="nome"]').value.trim(), codice: r.querySelector('[data-k="codice"]').value.trim(), ho: r.querySelector('[data-k="ho"]').value === "1" })).filter(a => a.nome || a.gioco);
+    if (d.tipo !== "serie") d.fumetti = [...document.querySelectorAll("#f-fu .subrow")].map(r => ({ titolo: r.querySelector('[data-k="titolo"]').value.trim(), autori: r.querySelector('[data-k="autori"]').value.trim(), verificato: r.querySelector('[data-k="verificato"]').value !== "0" })).filter(f => f.titolo);
+    if (d.tipo !== "serie") d.allegati = [...document.querySelectorAll("#f-al .subrow")].map(r => ({ tipo: r.querySelector('[data-k="tipo"]').value, gioco: r.querySelector('[data-k="gioco"]').value.trim(), nome: r.querySelector('[data-k="nome"]').value.trim(), codice: r.querySelector('[data-k="codice"]').value.trim(), ho: r.querySelector('[data-k="ho"]').value === "1" })).filter(a => a.nome || a.gioco);
     const prev = id ? items.get(id) : null; if (prev && prev.coverV) d.coverV = prev.coverV;
     const newId = id || ("it-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     if (!id && pendingPhoto){
@@ -918,10 +1136,14 @@ function confirmDelete(id){
 function fillForm(r){
   let n = 0;
   const set = (sel, v) => { const el = $(sel); if (el && v !== null && v !== undefined && v !== "" && !el.value.trim()){ el.value = v; n++; } };
-  if (r.tipo && !$("#f-testata").value.trim()) $("#f-tipo").value = r.tipo;
+  if (r.tipo && !$("#f-testata").value.trim() && $("#f-tipo").value !== "serie"){ $("#f-tipo").value = r.tipo; $("#frm").dataset.tipo = r.tipo; }
   set("#f-jp", r.titoloOriginale); set("#f-testata", r.testata); set("#f-editore", r.editore); set("#f-collana", r.collana);
   set("#f-anno", r.anno); set("#f-mese", r.mese); set("#f-numero", r.numero); set("#f-uscita", r.dataUscita);
   set("#f-autori", r.autori); set("#f-prezzo", r.prezzo); set("#f-cop", r.copertina);
+  if (r.tipo === "serie" || $("#f-tipo").value === "serie"){
+    set("#f-totale", r.totale); set("#f-anni", r.anni);
+    if (r.statoSerie && !$("#f-statoserie").value){ $("#f-statoserie").value = r.statoSerie; n++; }
+  }
   // il titolo scritto a mano lo sostituisco con quello completo solo se era breve
   const t = $("#f-titolo"); if (r.titolo && t.value.trim().length < r.titolo.length && !t.value.includes("–")){ t.value = r.titolo; n++; }
   if (!document.querySelector("#f-al .subrow") && r.allegati.length){ $("#f-al").insertAdjacentHTML("beforeend", r.allegati.map(subAllegato).join("")); n++; }
@@ -949,9 +1171,9 @@ function exportData(fmt){
   const list = [...items.values()].sort(cmp);
   const stamp = new Date().toISOString().slice(0, 10);
   if (fmt === "json") return saveFile(`collezione-fumetti-${stamp}.json`, JSON.stringify(list, null, 2), "application/json");
-  const cols = ["tipo","stato","testata","editore","collana","anno","mese","numero","titolo","titoloOriginale","dataUscita","copertina","autori","fumetti","allegati","note"];
+  const cols = ["tipo","stato","testata","editore","collana","anno","mese","numero","titolo","titoloOriginale","dataUscita","copertina","autori","fumetti","allegati","totale","anni","volumi","note"];
   const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
-  const rows = list.map(i => cols.map(c => c === "fumetti" ? q((i.fumetti || []).map(f => f.titolo).join(" | ")) : c === "allegati" ? q((i.allegati || []).map(a => (a.ho ? "[x] " : "[ ] ") + a.gioco + ": " + a.nome).join(" | ")) : q(i[c])).join(";"));
+  const rows = list.map(i => cols.map(c => c === "fumetti" ? q((i.fumetti || []).map(f => f.titolo).join(" | ")) : c === "allegati" ? q((i.allegati || []).map(a => (a.ho ? "[x] " : "[ ] ") + a.gioco + ": " + a.nome).join(" | ")) : c === "volumi" ? q(isSerie(i) ? `ce l'ho: ${fmtRange(volsWith(i, "ho"))} | mancano: ${fmtRange(volsWith(i, "manca"))} | desiderati: ${fmtRange(volsWith(i, "desiderato"))}` : "") : q(i[c])).join(";"));
   return saveFile(`collezione-fumetti-${stamp}.csv`, "﻿" + cols.join(";") + "\n" + rows.join("\n"), "text/csv");
 }
 $("#file-json").addEventListener("change", async e => {
@@ -986,7 +1208,8 @@ $("#logout").onclick = () => { LS.del("cj_aikey"); aiKey = null; session = null;
 document.addEventListener("keydown", e => { if (e.key === "Escape" && sheetOpen()) closeSheet(); });
 window.addEventListener("online", () => pull());
 window.addEventListener("offline", () => setSync("off"));
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pull(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pull(); else flushSoon(); });
+window.addEventListener("pagehide", flushSoon);
 setInterval(() => { if (document.visibilityState === "visible" && session) pull(); }, 5 * 60000);
 
 /* tasto Indietro di Android: chiude la scheda invece di uscire */

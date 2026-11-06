@@ -199,3 +199,29 @@ ol.hint-p{padding-left:20px;display:flex;flex-direction:column;gap:4px;margin:8p
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spinner{animation-duration:3s}}
 #photo{white-space:nowrap}
+
+/* --- serie --- */
+.ph.serie{background:repeating-linear-gradient(90deg,#1b1a1f 0 9px,#2b2a31 9px 12px);}
+.ph.serie .t{font-size:16px}
+.ph.serie .num{font-size:36px}
+.ph.serie .num small{font-size:18px;opacity:.8}
+.bar{display:block;height:5px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:3px}
+.bar span{display:block;height:100%;background:var(--red)}
+.bar.big{height:8px;margin:2px 0 10px}
+.voltools{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+.voltools .tab{font-size:12px;padding:4px 10px}
+.vols{display:grid;grid-template-columns:repeat(auto-fill,minmax(40px,1fr));gap:5px}
+.vol{position:relative;aspect-ratio:1;border-radius:4px;border:1.5px dashed var(--line);background:none;font-weight:700;font-size:13px;color:var(--muted);cursor:pointer;font-variant-numeric:tabular-nums;padding:0}
+.vol.ho{background:var(--red);border:1.5px solid var(--red);color:#fff}
+.vol.desiderato{background:color-mix(in srgb,var(--gold) 35%,transparent);border:1.5px solid var(--gold);color:var(--ink)}
+.vol i{position:absolute;top:1px;right:3px;font-style:normal;font-size:9px;line-height:1}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:8px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:2px;border:1.5px dashed var(--line);margin-left:6px}
+.sw.ho{background:var(--red);border:1.5px solid var(--red)}
+.sw.desiderato{background:color-mix(in srgb,var(--gold) 35%,transparent);border:1.5px solid var(--gold)}
+#vol-bulk{margin-top:12px;align-items:flex-end}
+.miss{margin-top:10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+form[data-tipo="serie"] .only-single{display:none}
+form:not([data-tipo="serie"]) .only-serie{display:none}
+#vol-bulk{display:grid;grid-template-columns:minmax(110px,auto) 1fr auto;gap:8px;align-items:end}
+#vol-bulk label.f{min-width:0}
